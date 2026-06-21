@@ -1,25 +1,24 @@
 Package: spmixqr
 Type: Package
-Title: Spatial Finite Mixtures of Quantile Regressions
-Version: 0.2.0
+Title: Spatial Quantile Regression with Autocorrelation and Mixtures
+Version: 0.2.1
 Authors@R: person(c("Kailas", "Venkitasubramanian"), email = "kailasv@gmail.com",
     role = c("aut", "cre"))
-Description: Fits spatial finite mixtures of quantile regressions: latent regimes
-    whose mixing probabilities vary over space through a spatial process, with
-    quantile-regression components whose covariate effects are spatially varying
-    surfaces. A penalised expectation-maximisation algorithm reuses the 'mixqr'
-    estimation core (Wu and Yao (2016) <doi:10.1016/j.csda.2015.08.013>) for the
-    component fits and a vendored, spatially penalised multinomial-logit gate. The
-    spatial basis and roughness penalties are built with 'mgcv' thin-plate, low-rank
-    Gaussian-process, or Markov-random-field smooths. An optional per-regime
-    conditional-autoregressive (CAR/ICAR) spatial random effect adds a spatial-error
-    surface built from queen/rook contiguity, distance-band, k-nearest-neighbour, or
-    user-supplied weights (Leroux et al. (2000) <doi:10.1007/978-1-4612-1284-3_4>),
-    with permutation Moran's I diagnostics. The single-regime case is a maintained
-    penalised spatially-varying-coefficient or spatial-error quantile regression in
-    the lineage of Reich, Fuentes and Dunson (2011) <doi:10.1198/jasa.2010.ap09237>.
-    Inference is classification-aware: a fast sandwich and a spatial-block bootstrap
-    (recommended for reporting).
+Description: Quantile regression for spatial data that accounts for spatial
+    dependence and autocorrelation. A conditional-autoregressive (CAR/ICAR) spatial
+    random effect, built from a weights matrix derived from queen/rook contiguity,
+    distance bands, k-nearest neighbours, or a user-supplied matrix (Leroux et al.
+    (2000) <doi:10.1007/978-1-4612-1284-3_4>), absorbs residual spatial
+    autocorrelation, with permutation Moran's I diagnostics; the single-region case
+    is a maintained spatial-error quantile regression in the lineage of Reich,
+    Fuentes and Dunson (2011) <doi:10.1198/jasa.2010.ap09237>. The estimator extends
+    to finite mixtures of quantile regressions with spatially varying mixing and
+    spatially varying covariate-effect surfaces, reusing the 'mixqr' core (Wu and Yao
+    (2016) <doi:10.1016/j.csda.2015.08.013>). A penalised expectation-maximisation
+    algorithm carries the CAR precision as a sparse penalty and uses 'mgcv'
+    thin-plate, Gaussian-process, or Markov-random-field smooths for the spatial gate
+    and slope surfaces. Inference is classification-aware: a fast sandwich and a
+    spatial-block bootstrap (recommended for reporting).
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.1)

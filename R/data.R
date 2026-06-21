@@ -68,3 +68,41 @@
 #' data(nc_sids_W)
 #' dim(nc_sids_W)
 "nc_sids_W"
+
+#' Columbus, Ohio neighbourhood crime
+#'
+#' Residential crime in 49 neighbourhoods of Columbus, Ohio (1980), the canonical
+#' spatial-econometrics dataset (Anselin 1988). Shipped as a tidy data frame with
+#' neighbourhood centroids, to illustrate spatial-error (CAR) quantile regression on
+#' contiguous areal units. The matching queen-contiguity weights are in [columbus_W].
+#'
+#' @format A data frame with 49 rows (neighbourhoods) and 6 variables:
+#' \describe{
+#'   \item{id}{Neighbourhood id (the spatial unit; matches `columbus_W` row/col order).}
+#'   \item{crime}{Residential burglaries and vehicle thefts per 1000 households.}
+#'   \item{income}{Household income (USD 1000).}
+#'   \item{hoval}{Housing value (USD 1000).}
+#'   \item{x, y}{Neighbourhood-polygon centroids (planar map units).}
+#' }
+#' @source The `columbus` data distributed with the \pkg{spData} package (Anselin,
+#'   L. 1988, \emph{Spatial Econometrics: Methods and Models}). Built offline from the
+#'   \pkg{spData} `columbus.gpkg` shapefile and redistributed as a built-in for
+#'   reproducible examples; see `data-raw/make_columbus.R`.
+#' @examples
+#' data(columbus_crime)
+#' summary(columbus_crime$crime)
+"columbus_crime"
+
+#' Queen-contiguity weights for the Columbus neighbourhoods
+#'
+#' A sparse, symmetric binary (`style = "B"`) queen-contiguity weights matrix over the
+#' 49 Columbus neighbourhoods of [columbus_crime] (118 links, one connected component).
+#' Pass to [spmixqr()] via `spatial_W = spq_weights(columbus_W, type = "supplied")`.
+#'
+#' @format A 49 x 49 sparse `dgCMatrix` (118 nonzero links).
+#' @source Queen contiguity (\code{spdep::poly2nb(queen = TRUE)}) of the \pkg{spData}
+#'   Columbus shapefile; built offline in `data-raw/make_columbus.R`.
+#' @examples
+#' data(columbus_W)
+#' dim(columbus_W)
+"columbus_W"

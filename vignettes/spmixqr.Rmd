@@ -11,45 +11,43 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6, fig.height = 4)
 ```
 
-`spmixqr` fits **spatial finite mixtures of quantile regressions**. The data are
-partitioned into a few latent *regimes*. Each regime is a quantile regression, the
-probability of belonging to a regime varies smoothly over space, and each regime's
-covariate slopes are themselves spatial surfaces (the per-regime intercept stays
-scalar). With one regime it is a penalised spatially-varying-coefficient quantile
-regression.
+`spmixqr` fits **quantile regression for spatial data while accounting for spatial
+autocorrelation**. A conditional-autoregressive (CAR) spatial random effect, built
+from a weights matrix, absorbs residual spatial dependence; a Moran's I diagnostic
+checks whether any spatial structure is left over. It extends to finite mixtures of
+spatial quantile regressions.
 
 ```{r setup}
 library(spmixqr)
-set.seed(1)
 ```
 
 ## A first fit
 
-We simulate two regimes whose mixing probability drifts across space and whose slope
-on `x` varies with location, then recover them.
+We model the median of Columbus neighbourhood crime on income and housing value, with
+a CAR spatial-error term on the queen-contiguity graph.
 
 ```{r fit}
-d <- sim_spmixqr(n = 250, G = 2, tau = 0.5, seed = 1)
-fit <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
-               control = spmixqr_control(nstart = 4L, seed = 1))
-fit
+data(columbus_crime); data(columbus_W)
+W <- spq_weights(columbus_W, type = "supplied")
+
+fit <- spmixqr(crime ~ income + hoval, data = columbus_crime,
+               coords = factor(columbus_crime$id), G = 1, tau = 0.5,
+               spatial_error = TRUE, spatial_coef = FALSE, spatial_W = W,
+               control = spmixqr_control(nstart = 1L, seed = 1))
+coef(fit)
 ```
 
-## Reading the spatial structure
+Higher neighbourhood income is associated with substantially less crime at the median.
 
-The gate maps where each regime is likely; `plot()` shows it over the coordinates.
+## Did the spatial term absorb the autocorrelation?
 
-```{r gate, fig.alt = "Gate probability map"}
-plot(fit, which = "gate", regime = 2)
+```{r moran}
+moran_resid(fit)
 ```
 
-The recovered membership tracks the truth:
+Residual spatial clustering that is present before the CAR term drops toward
+non-significance after it: the spatial effect soaks up the neighbourhood spillover.
 
-```{r recover}
-cl <- predict(fit, type = "class")
-acc <- max(mean(cl == d$truth$z), mean((3 - cl) == d$truth$z))
-round(acc, 2)
-```
-
-See `vignette("spmixqr-primer")` for a full applied walk-through on real data,
-including interpretation, uncertainty, and diagnostics.
+See `vignette("spmixqr-primer")` for the full worked example (how income's effect
+varies across the crime distribution, mapping the spatial effect, inference, and
+diagnostics) and `vignette("spmixqr-mixtures")` for the finite-mixture features.

@@ -1,11 +1,11 @@
 ---
-title: "A primer on spatial quantile mixture models"
+title: "A primer on spatial quantile regression with autocorrelation"
 output:
   rmarkdown::html_vignette:
     toc: true
 bibliography: spmixqr.bib
 vignette: >
-  %\VignetteIndexEntry{A primer on spatial quantile mixture models}
+  %\VignetteIndexEntry{A primer on spatial quantile regression with autocorrelation}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -21,191 +21,239 @@ library(spmixqr)
 set.seed(1)
 ```
 
-This primer is for a researcher who has spatial data and a distributional question
-but no prior exposure to spatial quantile mixtures. It walks from the question to a
-reproducible report, using a built-in version of the Meuse river soil dataset.
+This primer is for a researcher with *areal* spatial data (regions, neighbourhoods,
+census tracts) who wants to know how covariates move the **tails** of an outcome,
+not just its mean, while neighbouring units are spatially dependent. We work the
+Columbus, Ohio neighbourhood-crime dataset from start to finish: building the spatial
+weights, fitting a spatial quantile regression with a conditional-autoregressive (CAR)
+error, reading the coefficients across the distribution, checking whether the spatial
+term absorbs the autocorrelation, and reporting the result.
 
 ## 1. The question
 
-Soil zinc near the river Meuse is contaminated unevenly. Two questions a mean
-regression cannot answer:
+The 49 Columbus neighbourhoods differ sharply in residential crime. Two questions an
+ordinary (mean) regression cannot answer:
 
-* How does a **quantile** of contamination (here the median, though any `tau` works,
-  including the upper tail) respond to distance from the river, and does that
-  response **change across the flood plain**?
-* Are there latent **regimes**, patches that behave like a different contamination
-  process, and where are they?
+* Does household **income** protect against crime *equally* across the distribution, or
+  does it matter more in the **high-crime** neighbourhoods (the upper tail)?
+* After income and housing value are accounted for, do neighbouring areas still have
+  **correlated** crime, a spatial *spillover* the model is missing, and can we absorb it?
 
-`spmixqr` answers both at once. It splits the area into latent regimes whose
-membership drifts smoothly over space, fits a quantile regression in each, and lets
-each regime's covariate effect be a spatial surface.
+The spatial-error (CAR) quantile regression in `spmixqr` answers both at once. It fits a
+quantile regression at any level `tau` and adds a spatial random effect, built from a
+neighbourhood **weights matrix**, that soaks up residual spatial dependence.
 
 ## 2. The model in one page
 
-For a chosen quantile level $\tau$ (say the 0.9 upper tail), each observation belongs
-to one of $G$ latent regimes. The probability of regime $k$ at location $s$ is a
-smooth spatial surface, a softmax of a spatial basis (the *gate*). Within regime
-$k$, the $\tau$-th conditional quantile of the response is a linear predictor whose
-slopes vary over space:
-$$ Q_\tau(y \mid \text{regime }k, x, s) = \beta_{k0} + \sum_{j} x_j\,\beta_{kj}(s). $$
-The intercept $\beta_{k0}$ is a scalar. Spatial level variation is carried by the
-gate, since a free spatial intercept surface is not separately identified from it.
-Estimation is a penalised EM that reuses the `mixqr` quantile-regression core
-[@wuyao2016] for the components and a spatially penalised multinomial-logit gate
-[@fernandezgreen2002; @beraha2021]. The component step uses a convolution-smoothed
-check loss [@fgh2021; @tanwangzhou2022] so a roughness penalty can be applied. The
-single-regime case is a penalised spatially-varying-coefficient quantile regression
-in the lineage of @reich2011.
+For a chosen quantile level $\tau$, the $\tau$-th conditional quantile of the outcome in
+region $s$ is
+$$ Q_\tau(y_s \mid x_s) = x_s'\beta + \phi_s, \qquad \phi \sim \text{CAR}(W,\alpha,\lambda_\phi). $$
+Here $\beta$ are the covariate effects at quantile $\tau$, and $\phi$ is a spatial random
+effect, one value per region, with a conditional-autoregressive precision built from the
+spatial weights matrix $W$. We use the **Leroux** form
+$Q(\alpha)=\alpha(D-W)+(1-\alpha)I$, where $D$ is the degree matrix: $\alpha$ controls
+spatial strength and $\lambda_\phi$ its smoothness. We constrain $\phi$ to sum to zero
+within each connected component, so the intercept carries the overall level and $\phi$ is
+the mean-zero spatial *deviation*. The quantile fit uses the asymmetric-Laplace
+(check-loss) working likelihood; estimation is a penalised EM in which the CAR precision
+enters as a sparse ridge penalty [@kozumi2011; @leroux2000]. With one regime (`G = 1`,
+used throughout this primer) the model is a single-population spatial-error quantile
+regression; the mixture extension is covered in `vignette("spmixqr-mixtures")`.
 
 ## 3. The data
 
 ```{r data}
-data(meuse_zinc)
-meuse_zinc$lzinc <- log(meuse_zinc$zinc)
-str(meuse_zinc)
+data(columbus_crime)
+str(columbus_crime)
+summary(columbus_crime$crime)
 ```
 
-`lzinc` is log zinc (ppm); `dist` is normalised distance to the river; `x`, `y` are
-coordinates. Zinc is right-skewed and decays with distance, but the *rate* of decay
-plausibly differs across the plain.
+`crime` is residential burglaries and vehicle thefts per 1000 households; `income` and
+`hoval` (housing value) are in \$1000; `x` and `y` are neighbourhood centroids. Crime
+ranges from near zero to nearly 70 per 1000, a wide right-leaning spread that makes the
+tails, not just the average, worth modelling [@anselin1988].
 
-## 4. Fitting your first model
+## 4. Building the spatial weights
 
-We model the conditional median ($\tau = 0.5$) of log zinc as a function of distance,
-with two spatial regimes. Refit with `tau = 0.9` to study the upper tail.
+`spq_weights()` constructs the weights matrix `W`. For areal data the natural choice is
+**queen** (or **rook**) contiguity from the region polygons. We ship the queen contiguity
+for Columbus as `columbus_W`, so we pass it through the `"supplied"` path.
+
+```{r weights}
+data(columbus_W)
+W <- spq_weights(columbus_W, type = "supplied")
+W
+```
+
+From your own `sf`/`sp` polygons you would instead write
+`spq_weights(polys, type = "queen")` (or `"rook"`); for point data, use
+`spq_weights(coords, type = "distance", d2 = ...)` or `type = "knn"`. All paths return a
+symmetric `W`, and `spmixqr` forms the CAR precision internally.
+
+## 5. Fitting your first model
+
+We model the **median** ($\tau = 0.5$) of crime on income and housing value, with a CAR
+spatial-error term on the queen graph. For areal CAR fits, set `spatial_coef = FALSE`
+(the mgcv slope-surface machinery is for point covariate effects, not the areal CAR term)
+and pass the region identifier as `coords`.
 
 ```{r fit}
-fit <- spmixqr(lzinc ~ dist, data = meuse_zinc, coords = c("x", "y"),
-               G = 2, tau = 0.5, variance = "sandwich",
-               control = spmixqr_control(nstart = 5L, k = 15L, seed = 1))
+reg <- factor(columbus_crime$id)
+fit <- spmixqr(crime ~ income + hoval, data = columbus_crime, coords = reg,
+               G = 1, tau = 0.5, spatial_error = TRUE, spatial_coef = FALSE,
+               spatial_W = W, control = spmixqr_control(nstart = 1L, seed = 1))
 fit
 ```
 
-The fit reports a `label_stability` of about 0.26: the two regimes' distance-effect
-surfaces cross at roughly a quarter of locations, so the global "regime 1 / regime 2"
-labels are coherent across most, but not all, of the plain. Section 9 returns to this;
-read the maps below with that caveat in mind.
-
-## 5. Interpreting the estimates
+## 6. Interpreting the estimates
 
 ```{r summary}
 summary(fit)
 ```
 
-Each regime has its own intercept (overall contamination level) and an average
-distance slope. A steep negative slope means zinc falls quickly away from the river;
-a flat slope means a regime where distance barely matters (persistent contamination).
-The gate block reports any gating-covariate effects; here the spatial field does the
-work, so read the gate as a *map* (next section), not a coefficient.
+At the median, each extra \$1000 of neighbourhood income is associated with about two
+fewer crimes per 1000 households (`income` $\approx -2.0$), and the association is firmly
+significant. Housing value adds little once income is in the model: its coefficient is
+small and not significant. The standard errors shown are the fast
+**classification-conditional** sandwich, here the smoothed-quantile sandwich of the
+single-population fit. But the asymmetric-Laplace is a *working* likelihood and the data
+are spatially dependent, so the **spatial-block bootstrap** (Section 10) is what to
+report.
 
-## 6. Getting the uncertainty right
+## 7. The headline question: does the income effect vary across the distribution?
 
-Two cautions are built in. The asymmetric-Laplace likelihood is a *working*
-likelihood, and the sandwich standard errors above are *classification-conditional*:
-they treat the regime labels as known, so they tend to be optimistic. For reporting,
-prefer the spatial-block bootstrap, which refits the whole pipeline and aligns labels
-across replicates:
+A mean regression gives one income slope. Quantile regression gives a slope at each
+`tau`, which lets us see whether income matters more where crime is high. We refit across
+the distribution and read off the income coefficient.
 
-```{r boot, eval = FALSE}
-fit_boot <- spmixqr(lzinc ~ dist, data = meuse_zinc, coords = c("x", "y"),
-                    G = 2, tau = 0.5, variance = "boot",
-                    control = spmixqr_control(nstart = 5L, k = 15L, seed = 1,
-                                              boot_B = 200L, boot_block = 3L))
+```{r path}
+taus <- seq(0.15, 0.85, by = 0.1)
+inc <- sapply(taus, function(t) {
+  f <- spmixqr(crime ~ income + hoval, data = columbus_crime, coords = reg,
+               G = 1, tau = t, spatial_error = TRUE, spatial_coef = FALSE,
+               spatial_W = W, variance = "none",
+               control = spmixqr_control(nstart = 1L, seed = 1))
+  coef(f)["income", 1]
+})
+data.frame(tau = taus, income_coef = round(inc, 2))
 ```
 
-## 7. The headline question, answered
+The protective association **strengthens** from the lower to the upper part of the crime
+distribution: income's coefficient is near $-1.5$ around the first quartile and steepens
+to roughly $-2.2$ in the high-crime upper tail. Income differences matter *more* for
+separating moderate- from high-crime neighbourhoods than for the quietest ones, a pattern
+the conditional mean averages away.
 
-Does the distance effect on the median vary across space? The slope surface
-answers it directly.
+## 8. Accounting for spatial autocorrelation
 
-```{r slope-surface}
-cs <- coef_surface(fit, covariate = 1)
-tapply(cs$slope, cs$regime, function(s) round(range(s), 2))
+Does the model leave behind spatial structure, neighbouring areas with correlated
+residual crime? `moran_resid()` computes a permutation Moran's I on the residuals
+**before** and **after** the CAR term.
+
+```{r moran}
+mr <- moran_resid(fit, nsim = 999)
+mr
 ```
 
-A wide slope range means the distance effect is genuinely spatial within that regime,
-not a single number.
+Before the spatial term, the residuals show borderline positive clustering
+(Moran's I $\approx 0.17$, $p \approx 0.05$): nearby neighbourhoods have similar
+left-over crime. After the CAR term, the clustering drops to non-significant
+($I \approx 0.15$, $p \approx 0.10$). The shift is modest but real: the spatial effect
+absorbs part of the spillover, and what remains no longer clears the usual threshold. The
+fitted $\phi$ are the estimated spatial deviations, the "residual hotspot/coldspot"
+surface that income and housing value do not explain:
 
-## 8. Reading the fit in pictures
+```{r phi}
+ph <- phi_surface(fit)
+head(ph)
+range(round(ph$phi, 2))
+```
 
-```{r maps, eval = has_gg, fig.alt = "Gate and slope-surface maps"}
+## 9. Reading the fit in pictures
+
+A map of the spatial effect shows where crime runs higher or lower than the covariates
+predict. We plot neighbourhood centroids shaded by $\phi$; a choropleth needs the
+polygons, but centroids tell the same story here.
+
+```{r maps, eval = has_gg, fig.alt = "Map of the CAR spatial effect across Columbus neighbourhoods"}
 library(ggplot2)
 theme_set(theme_minimal(base_size = 11))
-
-gs <- gate_surface(fit)
-ggplot(subset(gs, regime == "2"), aes(coord1, coord2, colour = prob)) +
-  geom_point(size = 2) +
-  scale_colour_viridis_c(limits = c(0, 1)) +
-  labs(title = "Where regime 2 dominates", x = "easting", y = "northing",
-       colour = "P(regime 2)")
+ph$x <- columbus_crime$x; ph$y <- columbus_crime$y
+ggplot(ph, aes(x, y, colour = phi)) +
+  geom_point(size = 4) +
+  scale_colour_gradient2(low = "#2c7bb6", mid = "grey90", high = "#d7191c") +
+  labs(title = "CAR spatial effect (residual crime not explained by income/hoval)",
+       x = "easting", y = "northing", colour = expression(phi))
 ```
 
-```{r slope-map, eval = has_gg, fig.alt = "Slope surface map"}
-ggplot(cs, aes(coord1, coord2, colour = slope)) +
-  geom_point(size = 2) + facet_wrap(~ regime) +
-  scale_colour_viridis_c(option = "magma") +
-  labs(title = "Distance-effect surface by regime", x = "easting", y = "northing")
+```{r path-plot, eval = has_gg, fig.alt = "Income coefficient across quantiles"}
+ggplot(data.frame(tau = taus, income = inc), aes(tau, income)) +
+  geom_line() + geom_point() + geom_hline(yintercept = 0, linetype = 3) +
+  labs(title = "Income effect on crime across the distribution",
+       x = expression(tau), y = "income coefficient")
 ```
 
-## 9. Diagnostics: can you trust it?
+The income-by-`tau` curve is the headline finding in one picture: the slope grows more
+negative as we move up the crime distribution.
+
+## 10. Diagnostics: can you trust it?
 
 ```{r diag}
 d <- fit$diagnostics
-c(converged = d$converged, starts = d$n_starts,
-  gate_cond = round(d$gate_cond, 1),
-  class_entropy = round(d$class_entropy, 2),
-  label_stability = round(d$label_stability, 2))
+c(converged = d$converged,
+  moran_before_p = round(mr$before$p_value, 3),
+  moran_after_p  = round(mr$after$p_value, 3))
 ```
 
-`class_entropy` near 0 means confident classification; near 1 means overlapping
-regimes. `label_stability` is the fraction of locations where the regime slope
-surfaces cross: a high value warns that a single global label is only approximately
-coherent across space (a known v1 limitation). Here it sits near 0.26.
+* **Did the spatial term help?** Compare residual Moran's I before and after (Section 8).
+  If it was already non-significant, there is little spatial structure to absorb: the
+  "negative control" case.
+* **Inference.** Report the **spatial-block bootstrap**, not the sandwich:
+  `spmixqr(..., variance = "boot")` resamples connected blocks of the graph and refits.
+* **Weak identifiability.** The CAR strength `car_alpha` is held fixed (default 0.95), and
+  $\lambda_\phi$ is selectable by BIC via `spmixqr_select()`. Neither is a precisely
+  estimable variance, so we do not over-interpret their magnitudes.
+* **Small samples.** Columbus has 49 units. The point estimates are stable, but spatial
+  variance parameters are weakly identified at this size; lean on the bootstrap and avoid
+  many regimes.
 
-**A negative control.** When there is no spatial structure, the method should report
-none. We simulate a constant gate and flat slopes, then check that the gate surface
-stays flat:
+## 11. Practical guidance and pitfalls
 
-```{r negctrl}
-nc <- sim_spmixqr(n = 200, gate_slope = 0, coef_slope = 0, seed = 7)
-fit_nc <- spmixqr(y ~ x, nc$data, coords = nc$coords, G = 2, tau = 0.5,
-                  lambda_gate = 10, lambda_coef = 10, variance = "none",
-                  control = spmixqr_control(nstart = 4L, seed = 1))
-g_nc <- gate_surface(fit_nc)
-round(sd(g_nc$prob[g_nc$regime == "2"]), 3)   # small => no manufactured structure
-```
+* **Areal CAR fits use `spatial_coef = FALSE`** and pass the region id as `coords`. The
+  CAR term carries the spatial level; the slope-surface machinery (`spatial_coef = TRUE`)
+  is the separate point-data feature in `vignette("spmixqr-mixtures")`.
+* **Choosing `W`.** Queen contiguity is the default for polygons; rook is stricter
+  (shared edges only); for point data, use distance bands or k-NN. Check the substantive
+  conclusions against a second `W`.
+* **Gate vs CAR.** A free spatial *gate* and a CAR *intercept* are not separately
+  identified. Setting `spatial_error = TRUE` turns the spatial gate off, and an explicit
+  `spatial_gate = TRUE` raises a guardrail error. A covariate gate (`gating = ~ z`) is
+  fine.
+* **Regimes.** `G > 1` gives a mixture of spatial quantile regressions (latent
+  neighbourhood types); use it only with enough units.
 
-## 10. Practical guidance and pitfalls
+## 12. How `spmixqr` relates to other tools
 
-* **Keep `G` small** (2--3). Spatial mixtures are data-hungry, and label coherence
-  degrades as regimes proliferate.
-* **Standardise coordinates.** This is handled internally, but supply coordinates on
-  a sensible common scale.
-* **Choose the smoothing** with `spmixqr_select()` (BIC or cross-validated check
-  loss) rather than guessing `lambda_gate`/`lambda_coef`.
-* **Report bootstrap intervals**, not the sandwich, for inference.
-* Watch the `label_stability` warning: crossing slope surfaces mean the regime
-  identities are not globally fixed.
+`quantreg` fits quantile regression with no spatial structure; `spatialreg` and `spdep`
+fit spatial autoregressive *mean* models; `CARBayes` fits CAR models but not a quantile
+likelihood. The only dedicated spatial quantile package, `McSpatial`, has been archived
+since 2021. `spmixqr` provides a maintained spatial-error quantile regression with
+first-class queen, rook, distance, k-NN, and user-supplied weights, a Moran's-I
+diagnostic, and the mixture extension [@reich2011].
 
-## 11. How `spmixqr` relates to other tools
-
-`quantreg` fits one quantile regression with no spatial structure; `mixqr` adds
-latent regimes but fixed mixing; `mixqrgate` lets mixing depend on covariates.
-`spmixqr` makes the mixing *spatial* and the component effects *spatial surfaces*. No
-maintained R package fits spatial quantile regression (`BSquare` and `McSpatial` are
-archived), so the single-regime case fills that gap too [@reich2011].
-
-## 12. Reporting and reproducibility
+## 13. Reporting and reproducibility
 
 ```{r report}
-list(tau = fit$tau, G = fit$G,
-     intercepts = round(fit$beta_const[1, ], 2),
-     avg_slopes = round(fit$beta_const[2, ], 2),
-     bic = round(fit$bic, 1))
+list(tau = fit$tau,
+     income = round(coef(fit)["income", 1], 2),
+     hoval  = round(coef(fit)["hoval", 1], 2),
+     moran_before_p = round(mr$before$p_value, 3),
+     moran_after_p  = round(mr$after$p_value, 3))
 ```
 
-A spatial quantile mixture turns "how does contamination respond to distance" into a
-*map* of regime-specific tail responses. Through the diagnostics and the negative
-control, it declines to invent structure the data do not support.
+A spatial-error quantile regression turns "how does income relate to crime" into a
+sharper, map-aware answer: income's protective association is strongest in the high-crime
+tail, and once a CAR term absorbs the residual neighbourhood spillover, the leftover
+spatial clustering no longer clears the usual significance threshold.
 
 ## References

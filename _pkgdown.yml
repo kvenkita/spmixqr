@@ -6,10 +6,11 @@ template:
     primary: "#1b5e57"
 
 home:
-  title: Spatial finite mixtures of quantile regressions
+  title: Spatial quantile regression with autocorrelation
   description: >
-    Latent regimes with spatially varying mixing and spatially varying
-    quantile-regression slopes, with classification-aware inference.
+    Quantile regression for spatial data with a conditional-autoregressive (CAR)
+    spatial-error term, weights from queen/rook contiguity, distance, or k-NN, and
+    Moran's I diagnostics; extends to finite mixtures of spatial quantile regressions.
 
 navbar:
   structure:
@@ -25,32 +26,32 @@ navbar:
 
 reference:
 - title: Model fitting
-  desc: Fit a spatial quantile mixture and configure the EM.
+  desc: Fit a spatial quantile regression (single-region or mixture) and configure the EM.
   contents:
   - spmixqr
   - spmixqr_control
-- title: Model selection
-  contents:
   - spmixqr_select
-- title: Spatial basis, surfaces, and prediction
-  contents:
-  - spmixqr_basis
-  - coef_surface
-  - gate_surface
-  - phi_surface
-  - predict.spmixqr
-  - plot.spmixqr
 - title: Spatial weights and autocorrelation (CAR error)
   desc: Build the weights matrix and diagnose residual spatial autocorrelation.
   contents:
   - spq_weights
   - moran_resid
+  - phi_surface
+- title: Mixture surfaces and prediction
+  contents:
+  - spmixqr_basis
+  - coef_surface
+  - gate_surface
+  - predict.spmixqr
+  - plot.spmixqr
 - title: Simulation and data
   contents:
   - sim_spmixqr
-  - meuse_zinc
+  - columbus_crime
+  - columbus_W
   - nc_sids
   - nc_sids_W
+  - meuse_zinc
 - title: Package
   contents:
   - spmixqr-package
@@ -61,5 +62,6 @@ articles:
   contents:
   - spmixqr
   - spmixqr-primer
-  - articles/spmixqr-validation
   - articles/spmixqr-spatial-error
+  - articles/spmixqr-mixtures
+  - articles/spmixqr-validation

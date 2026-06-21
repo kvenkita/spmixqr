@@ -5,24 +5,27 @@
 [![R-CMD-check](https://github.com/kvenkita/spmixqr/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/kvenkita/spmixqr/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-**Spatial finite mixtures of quantile regressions.** `spmixqr` partitions spatial
-data into a few latent *regimes*, each a quantile regression, where the probability
-of belonging to a regime varies smoothly over space and each regime's covariate
-slopes are spatial surfaces. It answers questions a mean regression cannot: how the
-*tails* of an outcome respond to covariates, and how that response, and the latent
-regime structure itself, changes across a map. With one regime it is a penalised
-spatially-varying-coefficient quantile regression in the lineage of Reich, Fuentes &
-Dunson (2011).
+**Spatial quantile regression with autocorrelation.** `spmixqr` fits quantile
+regression for spatial data and accounts for the spatial dependence that ordinary
+quantile regression ignores. A conditional-autoregressive (**CAR/ICAR**) spatial
+random effect — built from a **weights matrix** you derive from queen/rook
+contiguity, distance bands, k-nearest neighbours, or supply yourself — absorbs
+residual spatial autocorrelation, and a permutation **Moran's I** diagnostic tells
+you whether any spatial structure is left unmodelled. It answers questions a mean
+regression cannot: how the *tails* of an outcome respond to covariates across a map,
+once spatial spillover is taken into account.
 
-It is the spatial member of the `mixqr` family ([`mixqr`](https://github.com/kvenkita/mixqr)
-= mixtures of quantile regressions; [`mixqrgate`](https://github.com/kvenkita/mixqrgate)
-= covariate-dependent gating), and reuses that estimation core.
+With one region it is a maintained **spatial-error quantile regression** (the lineage
+of Reich, Fuentes & Dunson 2011); it extends to **finite mixtures** of spatial
+quantile regressions with spatially varying mixing and covariate-effect surfaces. It
+is the spatial member of the `mixqr` family and reuses that estimation core.
 
 ## Why
 
-No maintained R package fits spatial quantile regression (`BSquare` and `McSpatial`
-are CRAN-archived), and none fits a *mixture* of quantile regressions with a spatial
-gate. `spmixqr` fills both gaps.
+No maintained R package fits spatial quantile regression — the only dedicated one,
+`McSpatial`, has been CRAN-archived since 2021, and `BSquare` since 2019 — and none
+combines a quantile likelihood with a CAR spatial-error term and contiguity/distance
+weights tooling. `spmixqr` fills that gap.
 
 ## Installation
 
@@ -37,36 +40,38 @@ remotes::install_github("kvenkita/spmixqr")
 ```r
 library(spmixqr)
 
-d <- sim_spmixqr(n = 250, G = 2, tau = 0.5, seed = 1)
-fit <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
-               control = spmixqr_control(nstart = 4L, seed = 1))
-fit
-summary(fit)
+data(columbus_crime); data(columbus_W)
+W <- spq_weights(columbus_W, type = "supplied")   # or spq_weights(polys, "queen")
 
-predict(fit, type = "prob")        # gate probabilities over space
-coef_surface(fit)                  # spatially varying slope surface
-plot(fit, which = "gate")          # map where each regime dominates
+fit <- spmixqr(crime ~ income + hoval, data = columbus_crime,
+               coords = factor(columbus_crime$id), G = 1, tau = 0.5,
+               spatial_error = TRUE, spatial_coef = FALSE, spatial_W = W)
+summary(fit)              # quantile coefficients + the spatial-error term
+moran_resid(fit)          # residual spatial autocorrelation, before vs after the CAR term
+phi_surface(fit)          # the fitted spatial-effect surface, per region
 ```
 
-A real-data walk-through (soil contamination on the Meuse flood plain) is in
+A fully worked walk-through (Columbus neighbourhood crime: how income's effect on the
+crime tails varies, and absorbing neighbourhood spillover) is in
 `vignette("spmixqr-primer")`.
 
 ## Key features
 
-* Spatially varying mixing (softmax over a `mgcv` thin-plate / GP / MRF basis) **and**
-  spatially varying component slopes.
-* CAR spatial-error module (`spatial_error = TRUE`): a per-regime mean-zero
-  conditional-autoregressive surface `phi_k` with a Leroux proper-CAR/ICAR precision,
-  built from a `spq_weights()` matrix (queen/rook contiguity, distance, k-NN, or
-  user-supplied). Includes a before/after residual Moran's I diagnostic.
-* Penalised EM reusing `mixqr`; convolution-smoothed component step so a roughness
-  penalty applies; exact reduction to weighted quantile regression for flat slopes.
-* Classification-aware inference: spatial-block / xy bootstrap (recommended) plus a
-  fast classification-conditional sandwich.
-* `spmixqr_select()` for the number of regimes and smoothing; full S3 surface;
-  surface accessors and maps; calibrated diagnostics including a label-stability
-  warning.
-* Reductions to `quantreg`, `mixqr`, and `mixqrgate` are tested exactly.
+* **Spatial weights, your way.** `spq_weights()` builds `W` from **queen/rook
+  contiguity** (`sf`/`sp` polygons), **distance bands**, or **k-nearest neighbours**,
+  or accepts a **user-supplied** matrix.
+* **CAR spatial-error term** (`spatial_error = TRUE`): a mean-zero conditional-
+  autoregressive surface with a Leroux proper-CAR / ICAR precision that absorbs
+  residual spatial autocorrelation, with a before/after **Moran's I** diagnostic and a
+  `phi_surface()` map.
+* **Quantile regression at any `tau`**, so covariate effects can differ across the
+  distribution (tails vs centre) — single-region or as a finite **mixture** of spatial
+  quantile regressions (spatially varying mixing and slope surfaces).
+* Penalised EM (sparse CAR penalty; `mgcv` smooths for the gate/slope surfaces);
+  exact reductions to `quantreg`, `mixqr`, and `mixqrgate`.
+* Classification-aware inference: a spatial-block bootstrap (recommended) plus a fast
+  sandwich; `spmixqr_select()` for regimes and smoothing; a full S3 surface, surface
+  accessors, and maps.
 
 ## Citation
 

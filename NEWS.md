@@ -1,3 +1,20 @@
+# spmixqr 0.2.1
+
+Documentation refocus: the spatial-dependence features (CAR spatial-error term,
+weights-matrix construction, Moran's I autocorrelation diagnostics) are now the
+package's primary framing, with the finite-mixture features presented as an
+extension. No change to the estimation code or the API.
+
+* New built-in dataset `columbus_crime` (49 Columbus, Ohio neighbourhoods) and its
+  queen-contiguity weights `columbus_W`, for the rewritten primer.
+* The primer (`vignette("spmixqr-primer")`) is rewritten as a fully worked
+  spatial-error quantile regression on Columbus crime: building the weights, fitting,
+  reading the income effect across the crime distribution, absorbing residual spatial
+  autocorrelation (Moran's I before/after), mapping the spatial effect, and reporting.
+* The earlier mixture/gate/slope walk-through moves to `vignette("spmixqr-mixtures")`.
+* README, DESCRIPTION, and the pkgdown site lead with the spatial-autocorrelation
+  capabilities.
+
 # spmixqr 0.2.0
 
 Adds a conditional-autoregressive (CAR) spatial-**error** module. Fully
