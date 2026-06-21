@@ -1,3 +1,7 @@
+# spmixqr 0.2.5
+
+* Primer: dropped the "Reporting and reproducibility" section.
+
 # spmixqr 0.2.4
 
 More interpretable spatial-error (CAR) coefficients.

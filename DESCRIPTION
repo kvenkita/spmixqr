@@ -1,7 +1,7 @@
 Package: spmixqr
 Type: Package
 Title: Spatial Quantile Regression with Autocorrelation and Mixtures
-Version: 0.2.4
+Version: 0.2.5
 Authors@R: person(c("Kailas", "Venkitasubramanian"), email = "kailasv@gmail.com",
     role = c("aut", "cre"))
 Description: Quantile regression for spatial data that accounts for spatial

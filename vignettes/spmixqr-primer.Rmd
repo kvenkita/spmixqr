@@ -381,19 +381,4 @@ since 2021. `spmixqr` provides a maintained spatial-error quantile regression wi
 first-class queen, rook, distance, k-NN, and user-supplied weights, a Moran's-I
 diagnostic, and the mixture extension [@reich2011].
 
-## 14. Reporting and reproducibility
-
-```{r report}
-list(tau = fit$tau,
-     income = round(coef(fit)["income", 1], 2),
-     hoval  = round(coef(fit)["hoval", 1], 2),
-     moran_before_p = round(mr$before$p_value, 3),
-     moran_after_p  = round(mr$after$p_value, 3))
-```
-
-A spatial-error quantile regression turns "how does income relate to crime" into a
-sharper, map-aware answer: income's protective association is strongest in the high-crime
-tail, and once a CAR term absorbs the residual neighbourhood spillover, the leftover
-spatial clustering no longer clears the usual significance threshold.
-
 ## References
