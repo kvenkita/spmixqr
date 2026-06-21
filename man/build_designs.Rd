@@ -15,10 +15,15 @@ build_designs(
   lam_g,
   lam_b,
   gate_ridge,
-  r
+  r,
+  car = NULL
 )
 }
 \description{
-Assemble augmented component / gate designs and their penalties.
+When \code{car} is non-\code{NULL} (the CAR spatial-error path) it must be a list with the
+constraint-absorbed incidence \code{Rt} (\verb{n x L'}), reduced precision \code{Qt} (\verb{L' x L'}),
+and \code{lambda} (the CAR penalty weight \code{lambda_phi}). The CAR columns are appended to
+the component design \code{Xt} and the penalty \code{lambda * Qt} is placed on the CAR block;
+\code{car_block} records the CAR column indices (so relabelling / ordering ignore them).
 }
 \keyword{internal}

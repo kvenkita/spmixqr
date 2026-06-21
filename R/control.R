@@ -26,8 +26,14 @@
 #' @param bandwidth,kde_grid Passed to [mixqr::mixqr_control()] for the KDE density path.
 #' @param boot_B,boot_block Bootstrap replicates and number of spatial blocks (per
 #'   axis) for the spatial-block bootstrap.
+#' @param boot_areal_blocks Target number of contiguous blocks for the areal
+#'   (CAR) block bootstrap (connected-component / graph partition of `W`).
 #' @param min_sites Minimum distinct locations required before a block bootstrap is
 #'   attempted (it under-covers with few blocks; Lahiri 2003).
+#' @param lambda_error_default Default CAR penalty `lambda_phi` when `lambda_error`
+#'   is `NULL` (the CAR effect's roughness; select by BIC with [spmixqr_select()]).
+#' @param car_alpha_grid Candidate proper-CAR `alpha` values for the optional coarse
+#'   profile in [spmixqr_select()] (alpha is fixed by default, not check-loss selected).
 #' @param trace Logical; print EM progress.
 #' @param seed Optional RNG seed (honoured throughout for reproducibility).
 #' @return A list of control parameters.
@@ -40,7 +46,9 @@ spmixqr_control <- function(nstart = 5L, maxit = 200L, tol = 1e-5,
                             sm_scale = 1, sm_floor = 1e-3,
                             coef_maxit = 50L, coef_tol = 1e-7,
                             bandwidth = NULL, kde_grid = 512L,
-                            boot_B = 200L, boot_block = 4L, min_sites = 12L,
+                            boot_B = 200L, boot_block = 4L, boot_areal_blocks = 8L,
+                            min_sites = 12L, lambda_error_default = 1,
+                            car_alpha_grid = c(0.5, 0.9, 0.95, 0.99),
                             trace = FALSE, seed = NULL) {
   basis_type <- match.arg(basis_type)
   label_order <- match.arg(label_order)
@@ -52,5 +60,7 @@ spmixqr_control <- function(nstart = 5L, maxit = 200L, tol = 1e-5,
        coef_maxit = as.integer(coef_maxit), coef_tol = coef_tol,
        bandwidth = bandwidth, kde_grid = as.integer(kde_grid),
        boot_B = as.integer(boot_B), boot_block = as.integer(boot_block),
-       min_sites = as.integer(min_sites), trace = isTRUE(trace), seed = seed)
+       boot_areal_blocks = as.integer(boot_areal_blocks),
+       min_sites = as.integer(min_sites), lambda_error_default = lambda_error_default,
+       car_alpha_grid = car_alpha_grid, trace = isTRUE(trace), seed = seed)
 }

@@ -19,10 +19,24 @@
 #' @param spatial_gate Logical; let the mixing probabilities vary over space.
 #' @param spatial_coef Logical; let component slopes vary over space (scalar
 #'   intercepts; see Details).
+#' @param spatial_error Logical; add a per-regime conditional-autoregressive (CAR)
+#'   spatial random effect `phi_k` (a mean-zero spatial-level surface) to each
+#'   component. When `TRUE` the spatial gate is turned off by default (a free spatial
+#'   gate aliases with the CAR intercept surface; see Details); an explicit
+#'   `spatial_gate = TRUE` then raises a guardrail error.
+#' @param spatial_W A [spq_weights()] object or a square weights matrix for the CAR
+#'   term. `NULL` auto-builds: queen contiguity from `areal` (an `nb`/`listw`), else a
+#'   k-nearest-neighbour graph from point `coords`.
+#' @param car CAR precision family: `"proper"` (Leroux `alpha(D-W)+(1-alpha)I`,
+#'   default) or `"icar"` (intrinsic `D-W` with a sum-to-zero constraint).
+#' @param car_alpha Proper-CAR spatial-dependence strength in `[0, 1]` (default
+#'   `0.95`). Fixed by default (weakly identified; disclosed in `summary()`), not
+#'   selected by the check loss.
 #' @param method Component density: `"ald"` (asymmetric Laplace) or `"kde"` (Wu & Yao
 #'   constrained kernel density).
-#' @param lambda_gate,lambda_coef Roughness penalties for the gate and slope
-#'   surfaces. `NULL` uses the control default; choose with [spmixqr_select()].
+#' @param lambda_gate,lambda_coef,lambda_error Roughness / CAR penalties for the gate,
+#'   slope surfaces, and CAR effect (`lambda_error` = `lambda_phi`). `NULL` uses the
+#'   control default; choose with [spmixqr_select()].
 #' @param variance Inference: `"sandwich"` (fast, classification-conditional;
 #'   default), `"boot"` (spatial-block/xy bootstrap; recommended for reporting), or
 #'   `"none"`.
@@ -50,16 +64,36 @@
 #' @export
 spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.5,
                     gating = ~1, spatial_gate = TRUE, spatial_coef = TRUE,
+                    spatial_error = FALSE, spatial_W = NULL,
+                    car = c("proper", "icar"), car_alpha = 0.95,
                     method = c("ald", "kde"),
-                    lambda_gate = NULL, lambda_coef = NULL,
+                    lambda_gate = NULL, lambda_coef = NULL, lambda_error = NULL,
                     variance = c("sandwich", "boot", "none"),
                     basis = NULL, control = spmixqr_control()) {
   method <- match.arg(method)
+  car <- match.arg(car)
   if (is.character(variance) || is.null(variance))
     variance <- if (is.null(variance)) "none" else match.arg(variance)
   if (!is.null(control$seed)) set.seed(control$seed)
   if (tau <= 0 || tau >= 1) stop("`tau` must be in (0, 1).")
   G <- as.integer(G)
+
+  ## ---- spatial-error guardrail: a free spatial gate aliases with the CAR level ----
+  if (isTRUE(spatial_error)) {
+    if (!missing(spatial_gate) && isTRUE(spatial_gate))
+      stop("`spatial_error = TRUE` cannot be combined with an explicit ",
+           "`spatial_gate = TRUE`: a free spatial gate and the per-regime CAR ",
+           "intercept surface are not separately identified (they both shift the ",
+           "marginal quantile level across space). Use a covariate or constant gate ",
+           "(`gating = ~1` or `gating = ~z`) with the CAR error, or drop the CAR ",
+           "error. See ?spmixqr Details.", call. = FALSE)
+    if (missing(spatial_gate) && isTRUE(spatial_gate)) {
+      spatial_gate <- FALSE
+      message("spatial_error = TRUE: turning the spatial gate off (the free spatial ",
+              "gate aliases with the CAR intercept surface). Set gating = ~z for a ",
+              "covariate gate.")
+    }
+  }
 
   ## ---- response + component design ----
   mf <- stats::model.frame(formula, data)
@@ -76,7 +110,10 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
 
   ## ---- spatial basis (built once, shared by gate and slope surfaces) ----
   need_basis <- spatial_gate || spatial_coef
-  geo <- if (need_basis) resolve_coords(coords, areal, data, n) else NULL
+  need_geo <- need_basis || isTRUE(spatial_error)
+  geo <- if (need_geo) resolve_coords(coords, areal, data, n,
+                                      spatial_error = isTRUE(spatial_error),
+                                      spatial_W = spatial_W) else NULL
   if (need_basis && is.null(basis)) {
     bt <- if (!is.null(areal)) "mrf" else control$basis_type
     locarg <- if (geo$mode == "areal") geo$region else geo$coords
@@ -88,10 +125,19 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
   r <- if (need_basis) basis$r else 0L
   lam_g <- if (is.null(lambda_gate)) 1 else lambda_gate
   lam_b <- if (is.null(lambda_coef)) 1 else lambda_coef
+  lam_phi <- if (is.null(lambda_error)) control$lambda_error_default else lambda_error
+
+  ## ---- CAR spatial-error structure (constraint-absorbed incidence + precision) ----
+  car_obj <- NULL; car_list <- NULL
+  if (isTRUE(spatial_error)) {
+    car_obj <- resolve_car(spatial_W, geo, car, car_alpha, n)
+    car_list <- list(Rt = car_obj$Rt, Qt = car_obj$Qt, Lp = car_obj$Lp,
+                     lambda = lam_phi)
+  }
 
   ## ---- assemble augmented designs + penalties + column bookkeeping ----
   des <- build_designs(X, W, B, Omega, slope_idx, spatial_gate, spatial_coef,
-                       lam_g, lam_b, control$gate_ridge, r)
+                       lam_g, lam_b, control$gate_ridge, r, car = car_list)
   Xt <- des$Xt; Z <- des$Z; Pen_beta <- des$Pen_beta; Pen_gamma <- des$Pen_gamma
 
   kdectrl <- mixqr::mixqr_control(bandwidth = control$bandwidth,
@@ -103,7 +149,8 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
   starts <- init_starts(y, X, coords_num, G, tau, control$nstart)
   fits <- lapply(starts, function(p0)
     tryCatch(spatial_em_fit(y, Xt, Z, G, tau, method, p0, Pen_beta, Pen_gamma,
-                            h_rate, spatial_coef, kdectrl, control),
+                            h_rate, spatial_coef, kdectrl, control,
+                            spatial_error = isTRUE(spatial_error)),
              error = function(e) NULL))
   fits <- Filter(Negate(is.null), fits)
   if (length(fits) == 0L) stop("All EM starts failed.")
@@ -135,6 +182,13 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
   aic <- if (is.finite(ll)) -2 * ll + 2 * edf$total else NA_real_
   bic <- if (is.finite(ll)) -2 * ll + log(n) * edf$total else NA_real_
 
+  ## ---- CAR spatial-error effects (recover phi on the L units, mean-zero) ----
+  car_slot <- NULL
+  if (isTRUE(spatial_error)) {
+    car_slot <- build_car_slot(best$beta, des$car_block, car_obj, car, car_alpha,
+                               lam_phi)
+  }
+
   ## ---- diagnostics ----
   occ <- colSums(best$posterior)
   ent <- mean(apply(best$posterior, 1L, function(pp)
@@ -144,19 +198,29 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
                       occupancy = occ, class_entropy = if (G > 1L) ent else 0,
                       label_stability = lab_stab, spatial_edf = edf$spatial,
                       smoothing_h = best$h_used)
+  ## residual Moran's I (after the CAR term) for the summary block
+  if (isTRUE(spatial_error) && !is.null(car_obj)) {
+    diagnostics$moran <- tryCatch({
+      r <- unit_residual_internal(y, X_fitted(Xt, best$beta), best$posterior,
+                                  car_obj$unit_idx, nrow(car_obj$Q))
+      perm_moran(r, car_obj$spqw$W, nsim = 199L)
+    }, error = function(e) NULL)
+  }
 
   obj <- structure(list(
     coefficients = best$beta, beta_const = beta_const, gamma = best$gamma,
     prior = best$prior, posterior = best$posterior, sigma = best$sigma,
     dens = best$dens, fitted_q = X_fitted(Xt, best$beta), residuals_m = best$dm,
     loglik = ll, edf = edf$total, edf_detail = edf, aic = aic, bic = bic,
-    lambda_gate = lam_g, lambda_coef = lam_b, basis = basis, design = des,
+    lambda_gate = lam_g, lambda_coef = lam_b, lambda_error = lam_phi,
+    basis = basis, design = des,
     control = control, gate_ridge = control$gate_ridge,
     se_method = variance, vcov = NULL, diagnostics = diagnostics,
     call = match.call(), terms = attr(mf, "terms"), formula = formula,
     gating = gating, tau = tau, G = G, method = method,
     spatial_gate = spatial_gate, spatial_coef = spatial_coef,
-    coords = if (need_basis) geo else NULL, X = X, W = W, y = y,
+    spatial_error = isTRUE(spatial_error), car = car_slot,
+    coords = if (need_geo) geo else NULL, X = X, W = W, y = y,
     h = best$h_used),
     class = "spmixqr")
 
@@ -166,13 +230,115 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
   obj
 }
 
-#' Resolve coordinates / areal specification.
+#' Resolve the CAR weights / precision / constraint-absorbed incidence.
+#'
+#' Builds the `spq_weights`, the unit map (observation -> unit), the full incidence,
+#' the precision, and the per-component sum-to-zero constraint absorption.
 #' @keywords internal
-resolve_coords <- function(coords, areal, data, n) {
+resolve_car <- function(spatial_W, geo, car, car_alpha, n) {
+  if (is.null(geo))
+    stop("`spatial_error = TRUE` needs `coords` (point) or `areal` (areal).",
+         call. = FALSE)
+
+  ## ---- build / validate the weights object first (it defines the unit ordering) ----
+  if (inherits(spatial_W, "spq_weights")) {
+    spqw <- spatial_W
+  } else if (!is.null(spatial_W)) {
+    spqw <- spq_weights(spatial_W, type = "supplied")
+  } else {
+    if (geo$mode == "areal") {
+      if (is.null(geo$areal))
+        stop("Auto-building CAR weights for areal data needs `areal` (an nb/listw), ",
+             "or supply `spatial_W`.", call. = FALSE)
+      spqw <- spq_weights(geo$areal, type = "queen")
+    } else {
+      ucc <- geo$coords[!duplicated(
+        apply(geo$coords, 1L, function(z) paste(z, collapse = "_"))), , drop = FALSE]
+      spqw <- spq_weights(ucc, type = "knn", k = min(5L, nrow(ucc) - 1L))
+    }
+  }
+  L <- nrow(spqw$W)
+  w_ids <- spqw$ids
+  if (is.null(w_ids)) w_ids <- as.character(seq_len(L))
+  ids <- w_ids
+
+  ## ---- observation -> unit index, aligned to the weights' unit ordering ----
+  if (geo$mode == "areal") {
+    region <- as.character(geo$region)
+    unit_idx <- match(region, w_ids)
+    if (anyNA(unit_idx))
+      stop("Region labels in `coords` not found among the weights' unit ids. ",
+           "Ensure spatial_W$ids match levels(factor(region)).", call. = FALSE)
+  } else {
+    cc <- geo$coords
+    key <- apply(cc, 1L, function(z) paste(z, collapse = "_"))
+    ukey <- unique(key)
+    if (length(ukey) != L)
+      stop(sprintf("point data has %d distinct locations but spatial_W has %d units.",
+                   length(ukey), L), call. = FALSE)
+    unit_idx <- match(key, ukey)
+    ## per-unit training coordinates, aligned to the unit ordering (ukey order), so
+    ## predict() can match new point coords to the nearest training unit.
+    unit_coords <- cc[match(ukey, key), , drop = FALSE]
+    rownames(unit_coords) <- NULL
+  }
+
+  Q <- make_car_precision(spqw, alpha = car_alpha, car = car)
+  R <- incidence_matrix(unit_idx, L)
+  membership <- components_from_W(spqw$W)$membership
+  ab <- absorb_car_constraint(R, Q, membership)
+  list(spqw = spqw, Q = Q, R = R, Rt = ab$Rt, Qt = ab$Qt, Tmat = ab$Tmat,
+       Lp = ab$Lp, unit_idx = unit_idx, ids = ids, membership = membership,
+       mode = geo$mode,
+       unit_coords = if (geo$mode == "point") unit_coords else NULL)
+}
+
+#' Assemble the obj$car slot from the fitted reduced CAR coefficients.
+#' @keywords internal
+build_car_slot <- function(beta, car_block, car_obj, car, car_alpha, lam_phi) {
+  G <- ncol(beta); L <- nrow(car_obj$Q)
+  phi <- matrix(0, L, G)
+  if (length(car_block) > 0L) {
+    red <- beta[car_block, , drop = FALSE]              # L' x G
+    phi <- as.matrix(car_obj$Tmat %*% red)              # L x G (mean-zero per comp)
+  }
+  rownames(phi) <- car_obj$ids
+  colnames(phi) <- paste0("regime", seq_len(G))
+  list(phi = phi, W = car_obj$spqw, Q = car_obj$Q, alpha = car_alpha, car = car,
+       lambda = lam_phi,
+       units = list(ids = car_obj$ids, unit_idx = car_obj$unit_idx,
+                    membership = car_obj$membership, mode = car_obj$mode,
+                    coords = car_obj$unit_coords))
+}
+
+#' Resolve coordinates / areal specification.
+#'
+#' For the CAR spatial-error path with a supplied `spatial_W` (areal data without an
+#' \pkg{spdep} `nb`), `coords` is treated as a length-n vector of region labels even
+#' when `areal` is `NULL`.
+#' @keywords internal
+resolve_coords <- function(coords, areal, data, n, spatial_error = FALSE,
+                           spatial_W = NULL) {
   if (!is.null(areal)) {
     region <- if (is.character(coords) && length(coords) == 1L) data[[coords]] else coords
     if (is.null(region)) stop("Areal fit needs `coords` = region labels (length n).")
     return(list(mode = "areal", region = as.factor(region), areal = areal,
+                coords = NULL))
+  }
+  ## CAR-error with a supplied W and region labels (no nb / no mgcv basis): areal mode.
+  ## Disambiguate by length, NOT type: a length-2 character vector is the documented
+  ## point-coords column-name form (coords = c("sx","sy")), not two region labels; and a
+  ## 2-column matrix is always point coords. Region labels are either a single column
+  ## name (length 1) or a length-n vector/factor.
+  is_colname_pair <- is.character(coords) && length(coords) == 2L &&
+    all(coords %in% names(data))
+  is_point_matrix <- (is.matrix(coords) || is.data.frame(coords)) && ncol(coords) == 2L
+  if (isTRUE(spatial_error) && !is.null(spatial_W) && !is.null(coords) &&
+      !is_colname_pair && !is_point_matrix &&
+      (is.character(coords) || is.factor(coords) ||
+       (is.atomic(coords) && !is.matrix(coords) && length(coords) == n))) {
+    region <- if (is.character(coords) && length(coords) == 1L) data[[coords]] else coords
+    return(list(mode = "areal", region = as.factor(region), areal = NULL,
                 coords = NULL))
   }
   if (is.null(coords)) stop("Spatial terms need `coords` (point) or `areal` (areal).")
@@ -183,9 +349,15 @@ resolve_coords <- function(coords, areal, data, n) {
 }
 
 #' Assemble augmented component / gate designs and their penalties.
+#'
+#' When `car` is non-`NULL` (the CAR spatial-error path) it must be a list with the
+#' constraint-absorbed incidence `Rt` (`n x L'`), reduced precision `Qt` (`L' x L'`),
+#' and `lambda` (the CAR penalty weight `lambda_phi`). The CAR columns are appended to
+#' the component design `Xt` and the penalty `lambda * Qt` is placed on the CAR block;
+#' `car_block` records the CAR column indices (so relabelling / ordering ignore them).
 #' @keywords internal
 build_designs <- function(X, W, B, Omega, slope_idx, spatial_gate, spatial_coef,
-                          lam_g, lam_b, gate_ridge, r) {
+                          lam_g, lam_b, gate_ridge, r, car = NULL) {
   n <- nrow(X)
   ## component design Xt and Pen_beta
   if (spatial_coef && length(slope_idx) > 0L && !is.null(B)) {
@@ -208,6 +380,31 @@ build_designs <- function(X, W, B, Omega, slope_idx, spatial_gate, spatial_coef,
     Pen_beta <- matrix(0, P, P)
     const_rows <- seq_len(P); spat_blocks <- list(); intercept_row <- 1L
   }
+  ## ---- append the constraint-absorbed CAR block (spatial-error path) ----
+  car_block <- integer(0); car_sparse <- FALSE
+  if (!is.null(car)) {
+    Lp <- car$Lp
+    if (Lp > 0L) {
+      Pbeta_full <- Pen_beta
+      ## assemble sparse augmented design and penalty
+      Xt_s <- methods::as(methods::as(Matrix::Matrix(Xt, sparse = TRUE),
+                                      "CsparseMatrix"), "generalMatrix")
+      Xt <- cbind(Xt_s, car$Rt)
+      car_block <- (P + 1L):(P + Lp)
+      Ptot <- P + Lp
+      Pen_beta <- Matrix::sparseMatrix(i = integer(0), j = integer(0),
+                                       x = numeric(0), dims = c(Ptot, Ptot))
+      if (any(Pbeta_full != 0)) {
+        nz <- which(Pbeta_full != 0, arr.ind = TRUE)
+        Pen_beta <- Pen_beta +
+          Matrix::sparseMatrix(i = nz[, 1L], j = nz[, 2L],
+                               x = Pbeta_full[nz], dims = c(Ptot, Ptot))
+      }
+      Pen_beta[car_block, car_block] <- car$lambda * car$Qt
+      Pen_beta <- methods::as(Pen_beta, "CsparseMatrix")
+      car_sparse <- TRUE
+    }
+  }
   ## gate design Z and Pen_gamma
   if (spatial_gate && !is.null(B)) {
     Z <- cbind(W, B); q1 <- ncol(Z)
@@ -224,14 +421,20 @@ build_designs <- function(X, W, B, Omega, slope_idx, spatial_gate, spatial_coef,
   list(Xt = Xt, Z = Z, Pen_beta = Pen_beta, Pen_gamma = Pen_gamma,
        const_rows = const_rows, spat_blocks = spat_blocks,
        intercept_row = intercept_row, slope_idx = slope_idx,
-       gate_spat = gate_spat, qw = ncol(W), r = r, spatial_coef = spatial_coef)
+       gate_spat = gate_spat, qw = ncol(W), r = r, spatial_coef = spatial_coef,
+       car_block = car_block, car_sparse = car_sparse)
 }
 
 #' Constant coefficient matrix (p x G) from the augmented coefficients.
+#'
+#' Returns only the beta (intercept + constant-slope) rows; the spatial-slope basis
+#' columns and the CAR block (`des$car_block`) are excluded, so relabelling, ordering,
+#' and label alignment never see the high-dimensional CAR noise.
 #' @keywords internal
 extract_const <- function(beta, des, p) {
   cr <- des$const_rows
-  if (length(cr) == nrow(beta)) return(beta)
+  if (length(des$car_block %||% integer(0)) == 0L &&
+      length(cr) == nrow(beta)) return(beta)
   beta[cr, , drop = FALSE]
 }
 
@@ -261,20 +464,32 @@ slope_surface_matrix <- function(beta, des, B, order_var) {
 
 #' Fitted conditional quantile per regime (n x G).
 #' @keywords internal
-X_fitted <- function(Xt, beta) Xt %*% beta
+X_fitted <- function(Xt, beta) as.matrix(Xt %*% beta)
 
 #' Effective degrees of freedom (component smoothers + gate smoother).
+#'
+#' The component trace `tr[(X'WpX + P)^{-1} X'WpX]` is computed sparsely when the CAR
+#' block is present (the design is a sparse `Matrix`), adding the CAR-smoother trace.
 #' @keywords internal
 compute_edf <- function(fit, Xt, Z, Pen_beta, Pen_gamma, G, des, spatial_coef) {
   comp <- 0
+  car_on <- isTRUE(des$car_sparse)
   for (k in seq_len(G)) {
     e <- fit$posterior[, k]                          # weight ~ responsibility
-    A <- crossprod(Xt, e * Xt)
-    H <- A + Pen_beta + 1e-8 * diag(ncol(Xt))
-    comp <- comp + sum(diag(safe_solve(H, A)))
+    if (car_on) {
+      A <- Matrix::crossprod(Xt, e * Xt)
+      H <- A + Pen_beta + 1e-8 * Matrix::Diagonal(ncol(Xt))
+      comp <- comp + tryCatch(sum(Matrix::diag(Matrix::solve(H, A))),
+                              error = function(er) ncol(Xt))
+    } else {
+      A <- crossprod(Xt, e * Xt)
+      H <- A + Pen_beta + 1e-8 * diag(ncol(Xt))
+      comp <- comp + sum(diag(safe_solve(H, A)))
+    }
   }
   ## spatial portion = component edf beyond the constant (intercept + flat-slope) part
-  n_const <- if (length(des$spat_blocks) > 0L) G * length(des$const_rows) else 0
+  has_surface <- length(des$spat_blocks) > 0L || length(des$car_block %||% integer(0)) > 0L
+  n_const <- if (has_surface) G * length(des$const_rows) else 0
   spatial <- max(0, comp - n_const)
   ## gate smoother edf
   gate_edf <- 0

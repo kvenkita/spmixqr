@@ -4,9 +4,11 @@
 \alias{resolve_coords}
 \title{Resolve coordinates / areal specification.}
 \usage{
-resolve_coords(coords, areal, data, n)
+resolve_coords(coords, areal, data, n, spatial_error = FALSE, spatial_W = NULL)
 }
 \description{
-Resolve coordinates / areal specification.
+For the CAR spatial-error path with a supplied \code{spatial_W} (areal data without an
+\pkg{spdep} \code{nb}), \code{coords} is treated as a length-n vector of region labels even
+when \code{areal} is \code{NULL}.
 }
 \keyword{internal}

@@ -1,0 +1,170 @@
+---
+title: "Spatial CAR-error quantile regression (areal and point data)"
+output: rmarkdown::html_vignette
+bibliography: ../spmixqr.bib
+vignette: >
+  %\VignetteIndexEntry{Spatial CAR-error quantile regression (areal and point data)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6.5, fig.height = 4)
+have_ggplot <- requireNamespace("ggplot2", quietly = TRUE)
+```
+
+```{r setup}
+library(spmixqr)
+set.seed(1)
+```
+
+## What the CAR spatial-error term adds
+
+`spmixqr` v0.1.0 modelled spatial structure through an `mgcv` basis on the **gate**
+and **slope surfaces**. Version 0.2.0 adds a weights-matrix-driven alternative: each
+regime carries a per-unit **conditional-autoregressive (CAR)** spatial random effect
+`phi_k`, a mean-zero spatial-level surface with a Leroux proper precision
+
+$$Q(\alpha) = \alpha (D - W) + (1-\alpha) I, \qquad \alpha \in [0,1],$$
+
+which recovers the intrinsic CAR (ICAR/Besag) at $\alpha = 1$ and independence at
+$\alpha = 0$ [@leroux2000]. The asymmetric-Laplace working likelihood of the quantile
+components makes a Gaussian CAR effect the right penalty for the M-step
+[@kozumi2011]. We solve the penalised check loss directly, so $\lambda_\phi$ is a
+tuning parameter chosen by BIC. With `G = 1` this is a single-population spatial-error
+quantile regression; with `G > 1` it is a mixture of spatial quantile regressions.
+
+**Identification.** A free spatial gate aliases with the CAR intercept surface, so
+`spatial_error = TRUE` turns the spatial gate off by default, and an explicit
+`spatial_gate = TRUE` then raises a guardrail error. A per-connected-component
+**sum-to-zero** constraint on `phi_k` is absorbed into the incidence and precision (as
+`mgcv`'s mrf basis does via `absorb.cons`), so the intercept carries the level and the
+CAR surface is a mean-zero deviation. `alpha` is **fixed** (default 0.95) and disclosed
+as weakly identified; the check loss does not select it (verified degenerate).
+
+## Building the weights matrix
+
+`spq_weights()` constructs a symmetric, sparse `W` from polygons (queen or rook
+contiguity), point coordinates (distance band or k-nearest-neighbour, symmetrised), an
+`spdep` `nb`/`listw`, or a user-supplied matrix. The default `style = "B"` (symmetric
+binary) is required for a valid Gaussian Markov random field precision.
+
+```{r weights}
+data(nc_sids_W)
+W <- spq_weights(nc_sids_W, type = "supplied")
+W
+```
+
+## A census-tract areal example: North Carolina SIDS
+
+The shipped `nc_sids` data are sudden-infant-death counts for the 100 North Carolina
+counties (1974--78), the canonical areal/lattice dataset [@cressie1993]. We model the
+log SIDS rate against the proportion of non-white births, with a county-level CAR
+spatial-error surface.
+
+```{r nc-fit}
+data(nc_sids)
+fit <- spmixqr(log_sids ~ pnw, nc_sids, coords = nc_sids$county,
+               G = 1, tau = 0.5, spatial_error = TRUE, spatial_coef = FALSE,
+               spatial_W = W, variance = "none",
+               control = spmixqr_control(nstart = 1L, seed = 1))
+coef(fit)
+```
+
+The fitted CAR surface is a tidy data frame for mapping:
+
+```{r nc-phi}
+ph <- phi_surface(fit)
+head(ph)
+```
+
+```{r nc-map, eval = have_ggplot, fig.alt = "CAR spatial-error surface by county"}
+library(ggplot2)
+ph$east  <- nc_sids$east[match(ph$unit, nc_sids$county)]
+ph$north <- nc_sids$north[match(ph$unit, nc_sids$county)]
+ggplot(ph, aes(east, north, colour = phi)) +
+  geom_point(size = 3) +
+  scale_colour_gradient2() +
+  labs(title = "County CAR spatial-error surface (median regression)",
+       x = "easting", y = "northing", colour = expression(phi)) +
+  theme_minimal()
+```
+
+### Residual spatial autocorrelation (a negative control)
+
+`moran_resid()` runs a permutation Moran's I on the responsibility-weighted residual
+aggregated to the unit, before and after the CAR term. The `nc_sids` log-rate residuals
+carry **little spatial signal to begin with**: the before-CAR Moran's I is small and
+non-significant. This is a negative control rather than a power demonstration. With
+nothing for the CAR term to absorb, BIC drives `lambda_phi` toward a near-flat surface.
+
+```{r nc-moran}
+moran_resid(fit, nsim = 199)
+```
+
+The before-significant to after-non-significant story appears below, on a simulated DGP
+that *does* carry genuine residual autocorrelation.
+
+## A point example: meuse zinc
+
+For point data, `spq_weights()` builds the graph from coordinates (here a symmetrised
+k-nearest-neighbour graph). Each distinct location is its own unit.
+
+```{r meuse}
+data(meuse_zinc)
+cc <- as.matrix(meuse_zinc[, c("x", "y")])
+Wp <- spq_weights(cc, type = "knn", k = 6)
+fit_p <- spmixqr(log(zinc) ~ dist, meuse_zinc, coords = cc, G = 1, tau = 0.5,
+                 spatial_error = TRUE, spatial_coef = FALSE, spatial_W = Wp,
+                 variance = "none", control = spmixqr_control(nstart = 1L, seed = 1))
+coef(fit_p)
+```
+
+## Recovery on a known DGP
+
+`sim_spmixqr(spatial_error = TRUE)` generates lattice data with a known CAR effect, so
+we can check recovery directly.
+
+```{r recovery}
+d <- sim_spmixqr(n = 500, G = 1, tau = 0.5, spatial_error = TRUE,
+                 lattice = 7, car_rho = 1.5, seed = 7)
+f <- spmixqr(y ~ x, d$data, coords = d$region, G = 1, tau = 0.5,
+             spatial_error = TRUE, spatial_coef = FALSE, spatial_W = d$spatial_W,
+             variance = "none", control = spmixqr_control(nstart = 1L, seed = 1))
+cor(f$car$phi[, 1], d$truth$phi[, 1])    # phi recovery
+sum(f$car$phi[, 1])                       # mean-zero constraint (exact)
+```
+
+### The CAR term absorbs genuine residual autocorrelation
+
+Here the unobserved CAR surface induces real spatial autocorrelation in the residuals,
+so `moran_resid()` shows the intended power story: Moran's I is large and significant
+*before* the CAR term and drops to non-significance *after* it.
+
+```{r recovery-moran}
+moran_resid(f, nsim = 199)
+```
+
+## Inference and caveats
+
+The asymmetric-Laplace working likelihood makes naive standard errors optimistic. We
+recommend reporting the **spatial-block bootstrap**, which for areal data resamples
+contiguous connected-component blocks of `W`; an i.i.d. fallback would destroy the
+spatial dependence. The bootstrap is the cost centre, so the example below is a small
+smoke run.
+
+```{r boot, eval = FALSE}
+## \donttest: refit x B is slow; use moderate L / few reps for the block bootstrap.
+fit_b <- spmixqr(log_sids ~ pnw, nc_sids, coords = nc_sids$county, G = 1, tau = 0.5,
+                 spatial_error = TRUE, spatial_coef = FALSE, spatial_W = W,
+                 variance = "boot",
+                 control = spmixqr_control(nstart = 1L, seed = 1, boot_B = 50L))
+vcov(fit_b)$note
+```
+
+Caveats, all disclosed in `summary()`: `alpha` is weakly identified (fixed, not
+estimated); `lambda_phi` is a penalty, not a precise variance; the block bootstrap
+under-covers with few blocks [@lahiri2003]; and the spatial-**lag** ($\rho W y$) model
+is deferred (v1 models autocorrelated unobservables, not spillovers).
+
+## References

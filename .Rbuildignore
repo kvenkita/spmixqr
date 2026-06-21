@@ -11,3 +11,4 @@
 ^reviews$
 ^_.*\.R$
 ^LICENSE\.md$
+^data-raw$

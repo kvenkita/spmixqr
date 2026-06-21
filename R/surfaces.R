@@ -40,6 +40,42 @@ coef_surface <- function(object, newcoords = NULL, covariate = 1L) {
   out
 }
 
+#' CAR spatial-error surfaces
+#'
+#' Returns the per-regime CAR spatial random effect `phi_k` (the mean-zero
+#' spatial-level surface) as a tidy data frame for mapping, mirroring [coef_surface()]
+#' and [gate_surface()]. One row per (unit, regime).
+#'
+#' @param object A fitted [spmixqr] object with `spatial_error = TRUE`.
+#' @param newunits Optional unit identifiers to restrict / reorder the output
+#'   (validated against the CAR unit ids). `NULL` uses all training units.
+#' @return A data frame with `unit`, `regime`, and `phi`.
+#' @examples
+#' \donttest{
+#' d <- sim_spmixqr(n = 200, G = 1, tau = 0.5, spatial_error = TRUE, lattice = 6,
+#'                  seed = 1)
+#' fit <- spmixqr(y ~ x, d$data, coords = d$region, G = 1, tau = 0.5,
+#'                spatial_error = TRUE, spatial_coef = FALSE, spatial_W = d$spatial_W,
+#'                variance = "none", control = spmixqr_control(nstart = 1L, seed = 1))
+#' head(phi_surface(fit))
+#' }
+#' @export
+phi_surface <- function(object, newunits = NULL) {
+  if (!isTRUE(object$spatial_error) || is.null(object$car))
+    stop("This model has no CAR spatial-error term (`spatial_error = FALSE`).")
+  phi <- object$car$phi
+  ids <- object$car$units$ids
+  if (!is.null(newunits)) {
+    sel <- match(as.character(newunits), ids)
+    if (anyNA(sel)) stop("`newunits` contains units not seen in training.")
+    phi <- phi[sel, , drop = FALSE]; ids <- ids[sel]
+  }
+  G <- ncol(phi); L <- nrow(phi)
+  data.frame(unit = factor(rep(ids, times = G), levels = ids),
+             regime = factor(rep(seq_len(G), each = L)),
+             phi = as.numeric(phi))
+}
+
 #' Spatial gate surfaces
 #'
 #' Evaluates the mixing probabilities over space, returning a tidy data frame.

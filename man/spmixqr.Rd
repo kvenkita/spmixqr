@@ -14,9 +14,14 @@ spmixqr(
   gating = ~1,
   spatial_gate = TRUE,
   spatial_coef = TRUE,
+  spatial_error = FALSE,
+  spatial_W = NULL,
+  car = c("proper", "icar"),
+  car_alpha = 0.95,
   method = c("ald", "kde"),
   lambda_gate = NULL,
   lambda_coef = NULL,
+  lambda_error = NULL,
   variance = c("sandwich", "boot", "none"),
   basis = NULL,
   control = spmixqr_control()
@@ -45,11 +50,29 @@ data). \code{NULL} for point data.}
 \item{spatial_coef}{Logical; let component slopes vary over space (scalar
 intercepts; see Details).}
 
+\item{spatial_error}{Logical; add a per-regime conditional-autoregressive (CAR)
+spatial random effect \code{phi_k} (a mean-zero spatial-level surface) to each
+component. When \code{TRUE} the spatial gate is turned off by default (a free spatial
+gate aliases with the CAR intercept surface; see Details); an explicit
+\code{spatial_gate = TRUE} then raises a guardrail error.}
+
+\item{spatial_W}{A \code{\link[=spq_weights]{spq_weights()}} object or a square weights matrix for the CAR
+term. \code{NULL} auto-builds: queen contiguity from \code{areal} (an \code{nb}/\code{listw}), else a
+k-nearest-neighbour graph from point \code{coords}.}
+
+\item{car}{CAR precision family: \code{"proper"} (Leroux \verb{alpha(D-W)+(1-alpha)I},
+default) or \code{"icar"} (intrinsic \code{D-W} with a sum-to-zero constraint).}
+
+\item{car_alpha}{Proper-CAR spatial-dependence strength in \verb{[0, 1]} (default
+\code{0.95}). Fixed by default (weakly identified; disclosed in \code{summary()}), not
+selected by the check loss.}
+
 \item{method}{Component density: \code{"ald"} (asymmetric Laplace) or \code{"kde"} (Wu & Yao
 constrained kernel density).}
 
-\item{lambda_gate, lambda_coef}{Roughness penalties for the gate and slope
-surfaces. \code{NULL} uses the control default; choose with \code{\link[=spmixqr_select]{spmixqr_select()}}.}
+\item{lambda_gate, lambda_coef, lambda_error}{Roughness / CAR penalties for the gate,
+slope surfaces, and CAR effect (\code{lambda_error} = \code{lambda_phi}). \code{NULL} uses the
+control default; choose with \code{\link[=spmixqr_select]{spmixqr_select()}}.}
 
 \item{variance}{Inference: \code{"sandwich"} (fast, classification-conditional;
 default), \code{"boot"} (spatial-block/xy bootstrap; recommended for reporting), or

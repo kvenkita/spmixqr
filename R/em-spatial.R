@@ -4,9 +4,16 @@
 ## solver when slopes vary spatially.
 
 #' One penalised-EM fit from an initial responsibility matrix.
+#'
+#' When `spatial_error = TRUE` the component M-step is **always** routed through the
+#' penalised CAR solver ([pen_smooth_wqr_car()]) on the augmented `[X, Rt]` design with
+#' the `lambda_phi * Qt` penalty block, regardless of `spatial_coef` (the unpenalised
+#' `weighted_rq` branch would silently drop the CAR penalty for the `G = 1` /
+#' constant-slope paths).
 #' @keywords internal
 spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
-                           Pen_beta, Pen_gamma, h, spatial_coef, kdectrl, control) {
+                           Pen_beta, Pen_gamma, h, spatial_coef, kdectrl, control,
+                           spatial_error = FALSE) {
   n <- length(y); P <- ncol(Xt)
   p <- p_init
   beta <- matrix(0, P, G)
@@ -15,7 +22,13 @@ spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
   h_used <- h
   component_step <- function(p, beta) {
     for (k in seq_len(G)) {
-      if (spatial_coef) {
+      if (isTRUE(spatial_error)) {
+        cf <- pen_smooth_wqr_car(Xt, y, tau, p[, k], Pen_beta, h,
+                                 floor_abs = control$sm_floor, beta_init = beta[, k],
+                                 maxit = control$coef_maxit, tol = control$coef_tol)
+        beta[, k] <- cf$beta
+        h_used <<- cf$h
+      } else if (spatial_coef) {
         cf <- pen_smooth_wqr(Xt, y, tau, p[, k], Pen_beta, h,
                              floor_abs = control$sm_floor, beta_init = beta[, k],
                              maxit = control$coef_maxit, tol = control$coef_tol)
@@ -29,7 +42,7 @@ spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
     beta
   }
   densities <- function(beta, p) {
-    e <- y - Xt %*% beta
+    e <- as.matrix(y - Xt %*% beta)
     if (method == "ald") {
       sigma <- vapply(seq_len(G), function(k) {
         den <- sum(p[, k]); num <- sum(p[, k] * rho_tau(e[, k], tau))
@@ -74,7 +87,7 @@ spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
   prior <- gfit$pi
 
   pen_b <- 0.5 * sum(vapply(seq_len(G), function(k)
-    as.numeric(crossprod(beta[, k], Pen_beta %*% beta[, k])), numeric(1)))
+    as.numeric(crossprod(beta[, k], as.numeric(Pen_beta %*% beta[, k]))), numeric(1)))
   pen_g <- if (ncol(gfit$gamma) > 0)
     0.5 * sum(vapply(seq_len(ncol(gfit$gamma)), function(a)
       as.numeric(crossprod(gfit$gamma[, a], Pen_gamma %*% gfit$gamma[, a])), numeric(1)))

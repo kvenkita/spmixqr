@@ -13,10 +13,15 @@ spmixqr_select(
   gating = ~1,
   spatial_gate = TRUE,
   spatial_coef = TRUE,
+  spatial_error = FALSE,
+  spatial_W = NULL,
+  car = c("proper", "icar"),
+  car_alpha = 0.95,
   method = c("ald", "kde"),
   G_grid = 2:3,
   lambda_gate_grid = c(0.1, 1, 10),
   lambda_coef_grid = c(0.1, 1, 10),
+  lambda_error_grid = c(0.1, 1, 10),
   criterion = c("bic", "cv"),
   folds = 5L,
   control = spmixqr_control()
@@ -25,9 +30,14 @@ spmixqr_select(
 \arguments{
 \item{formula, data, coords, areal, tau, gating, spatial_gate, spatial_coef, method}{Passed to \code{\link[=spmixqr]{spmixqr()}}.}
 
+\item{spatial_error, spatial_W, car, car_alpha}{CAR spatial-error settings passed to
+\code{\link[=spmixqr]{spmixqr()}}. When \code{spatial_error = TRUE} the \code{lambda_error_grid} is searched
+(BIC, with the CAR-effective-df term) and \code{spatial_gate} is forced off (the
+guardrail); \code{car_alpha} is fixed (not selected by the check loss).}
+
 \item{G_grid}{Candidate regime counts.}
 
-\item{lambda_gate_grid, lambda_coef_grid}{Candidate penalties.}
+\item{lambda_gate_grid, lambda_coef_grid, lambda_error_grid}{Candidate penalties.}
 
 \item{criterion}{\code{"bic"} or \code{"cv"}.}
 

@@ -37,12 +37,20 @@ reference:
   - spmixqr_basis
   - coef_surface
   - gate_surface
+  - phi_surface
   - predict.spmixqr
   - plot.spmixqr
+- title: Spatial weights and autocorrelation (CAR error)
+  desc: Build the weights matrix and diagnose residual spatial autocorrelation.
+  contents:
+  - spq_weights
+  - moran_resid
 - title: Simulation and data
   contents:
   - sim_spmixqr
   - meuse_zinc
+  - nc_sids
+  - nc_sids_W
 - title: Package
   contents:
   - spmixqr-package
@@ -54,3 +62,4 @@ articles:
   - spmixqr
   - spmixqr-primer
   - articles/spmixqr-validation
+  - articles/spmixqr-spatial-error

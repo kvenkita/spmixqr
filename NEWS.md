@@ -1,3 +1,42 @@
+# spmixqr 0.2.0
+
+Adds a conditional-autoregressive (CAR) spatial-**error** module. Fully
+back-compatible: `spatial_error = FALSE` (the default) reproduces v0.1.0 exactly.
+
+* New `spatial_error = TRUE` argument to `spmixqr()`: each regime carries a mean-zero
+  per-unit CAR/ICAR spatial random effect `phi_k` with a Leroux proper precision
+  `Q(alpha) = alpha (D - W) + (1 - alpha) I` (or intrinsic `D - W`). A per-connected-
+  component sum-to-zero constraint is absorbed into the incidence/precision (à la
+  `mgcv`'s `absorb.cons`), so the intercept carries the level and `phi_k` is identified.
+  At `G = 1` this is a maintained single-population spatial-error quantile regression;
+  at `G > 1` (covariate/constant gate) it is a mixture of spatial quantile regressions.
+* New weights layer `spq_weights()`: builds a symmetric, sparse `W` from `sf`/`sp`
+  polygons (queen/rook contiguity), point coordinates (distance band, k-NN, symmetrised),
+  an `spdep` `nb`/`listw`, or a user matrix (`supplied`). `make_car_precision()` forms
+  the CAR/ICAR precision; `print.spq_weights()`.
+* The component M-step is rebranched: when `spatial_error = TRUE` it routes through a
+  new **sparse** penalised-Newton solver (each Newton step solved with `Matrix::solve()`
+  on the sparse `(p + L')` system) on the augmented `[X, R]` design, regardless of
+  `spatial_coef`, so the CAR penalty is never dropped. The dense solver remains the
+  non-CAR path.
+* Identification guardrail: `spatial_error = TRUE` turns the spatial gate off by default
+  (with a message); an explicit `spatial_gate = TRUE` alongside `spatial_error = TRUE`
+  raises an explanatory error (a free spatial gate aliases with the CAR level surface).
+* `moran_resid()`: permutation Moran's I on the responsibility-weighted residual
+  aggregated to the spatial unit, reported before/after the CAR term. `phi_surface()`
+  tidy accessor; `plot(which = "phi")`; a spatial-error block in `summary()`.
+* `alpha` is fixed (default proper-CAR `0.95`, disclosed as weakly identified, not
+  selected by the check loss); `lambda_error` (= `lambda_phi`) is selected by BIC with
+  a CAR effective-df term. `spmixqr_select()` gains `lambda_error`/`car`/`car_alpha`
+  pass-through.
+* Inference: `bootstrap_vcov()` gains an areal connected-component block mode
+  (`spdep::n.comp.nb`) for CAR fits (the point path silently fell back to i.i.d.).
+* `sim_spmixqr(spatial_error = TRUE)` generates lattice data with a known CAR effect.
+* New shipped areal example `nc_sids` (North Carolina SIDS, 100 counties) with queen
+  contiguity weights `nc_sids_W`, built offline (CSV/`.rda`-decoupled) from `sf`.
+* Imports `spdep`, `Matrix`, `methods` (the sparse CAR precision/solver); `sf` in
+  Suggests (polygon input).
+
 # spmixqr 0.1.0
 
 First release.

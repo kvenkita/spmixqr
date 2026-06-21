@@ -55,6 +55,10 @@ A real-data walk-through (soil contamination on the Meuse flood plain) is in
 
 * Spatially varying mixing (softmax over a `mgcv` thin-plate / GP / MRF basis) **and**
   spatially varying component slopes.
+* CAR spatial-error module (`spatial_error = TRUE`): a per-regime mean-zero
+  conditional-autoregressive surface `phi_k` with a Leroux proper-CAR/ICAR precision,
+  built from a `spq_weights()` matrix (queen/rook contiguity, distance, k-NN, or
+  user-supplied). Includes a before/after residual Moran's I diagnostic.
 * Penalised EM reusing `mixqr`; convolution-smoothed component step so a roughness
   penalty applies; exact reduction to weighted quantile regression for flat slopes.
 * Classification-aware inference: spatial-block / xy bootstrap (recommended) plus a

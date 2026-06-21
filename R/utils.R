@@ -37,8 +37,14 @@ rho_tau <- function(u, tau) u * (tau - (u < 0))
 .dnorm <- function(x) stats::dnorm(x)
 
 #' Symmetrise a matrix (numerical hygiene for covariances).
+#'
+#' Coerces a \pkg{Matrix} S4 object to a base dense matrix first, so the result is
+#' always a plain numeric matrix (covariances downstream are read with base `diag()`).
 #' @keywords internal
-symmetrise <- function(A) (A + t(A)) / 2
+symmetrise <- function(A) {
+  if (isS4(A) || methods::is(A, "Matrix")) A <- as.matrix(A)
+  (A + t(A)) / 2
+}
 
 #' Minimal Moore-Penrose pseudo-inverse (avoids a MASS dependency).
 #' Vendored from mixqrgate's MASS_ginv.

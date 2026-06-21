@@ -15,7 +15,10 @@
 #'   \item [spmixqr_select()] --- choose the number of regimes and/or the
 #'         smoothing parameters.
 #'   \item [sim_spmixqr()] --- simulate from the model (for validation).
-#'   \item [coef_surface()], [gate_surface()] --- spatial-surface accessors.
+#'   \item [coef_surface()], [gate_surface()], [phi_surface()] --- spatial-surface
+#'         accessors (slope, gate, and CAR spatial-error surfaces).
+#'   \item [spq_weights()] --- build the CAR spatial weights matrix.
+#'   \item [moran_resid()] --- residual Moran's I before/after the CAR term.
 #' }
 #'
 #' @references

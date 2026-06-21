@@ -23,7 +23,12 @@ predict.spmixqr <- function(object, newdata = NULL, newcoords = NULL,
     d <- predict_designs(object, newdata, newcoords)
     Xt <- d$Xt; Z <- d$Z
     prob <- gate_predict(object$gamma, Z)
-    fq <- Xt %*% object$coefficients
+    ## beta-only fitted quantile (CAR columns excluded; add the phi surface below)
+    beta_only <- if (length(object$design$car_block) > 0L)
+      object$coefficients[-object$design$car_block, , drop = FALSE]
+    else object$coefficients
+    fq <- as.matrix(Xt %*% beta_only)
+    if (isTRUE(object$spatial_error)) fq <- fq + predict_car_phi(object, newcoords)
     post <- NULL
     if (type == "posterior") {
       yv <- tryCatch(stats::model.response(stats::model.frame(object$formula, newdata)),
@@ -59,6 +64,44 @@ predict_designs <- function(object, newdata, newcoords) {
                        object$gate_ridge %||% 1e-3,
                        object$design$r)
   list(Xt = des$Xt, Z = des$Z)
+}
+
+#' Broadcast the CAR phi surface (L x G) to new observations (n x G) via their unit.
+#' @keywords internal
+predict_car_phi <- function(object, newcoords) {
+  car <- object$car
+  if (is.null(newcoords))
+    stop("Spatial-error model: supply `newcoords` (region labels or coordinates).",
+         call. = FALSE)
+  ids <- car$units$ids
+  if (identical(car$units$mode, "areal")) {
+    u <- match(as.character(newcoords), ids)
+    if (anyNA(u))
+      stop("predict for a spatial-error model needs `newcoords` matching the training ",
+           "spatial units (CAR phi is defined on the fixed unit set).", call. = FALSE)
+  } else {
+    cc <- as.matrix(newcoords)
+    storage.mode(cc) <- "double"
+    tc <- car$units$coords
+    if (is.null(tc))
+      stop("predict for a point spatial-error model needs stored training unit ",
+           "coordinates (refit with spmixqr 0.2.0 or later).", call. = FALSE)
+    ## CAR phi is defined on the fixed training unit set. Match each new point to a
+    ## training unit: exact coordinate match first, else the nearest training-unit
+    ## centroid by Euclidean distance (documented nearest-unit broadcast).
+    tkey <- apply(tc, 1L, function(z) paste(z, collapse = "_"))
+    nkey <- apply(cc, 1L, function(z) paste(z, collapse = "_"))
+    u <- match(nkey, tkey)
+    miss <- which(is.na(u))
+    if (length(miss)) {
+      for (i in miss) {
+        dvec <- sqrt(rowSums((tc - matrix(cc[i, ], nrow(tc), ncol(tc),
+                                          byrow = TRUE))^2))
+        u[i] <- which.min(dvec)
+      }
+    }
+  }
+  car$phi[u, , drop = FALSE]
 }
 
 #' Per-regime component densities at residual matrix `e` (n x G).

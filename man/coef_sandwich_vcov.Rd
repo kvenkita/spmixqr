@@ -9,8 +9,10 @@ an ALD stand-in). Disclosed as classification-conditional.}
 coef_sandwich_vcov(Xt, y, tau, w, beta, Pen, h)
 }
 \description{
-Classification-conditional smoothed-QR sandwich for one regime's coefficients.
-Bread-meat-bread form with the density read off the fitted smoothed kernel (never
-an ALD stand-in). Disclosed as classification-conditional.
+On the CAR spatial-error path \code{Xt}/\code{Pen} arrive as sparse \pkg{Matrix} \code{dgCMatrix}
+objects; the bread and meat are dense \verb{(p + L')^2} blocks, so we densify the inputs
+(\code{as.matrix}) and work with base linear algebra. This is acceptable because the
+sandwich already materialises a dense \verb{(p + L')^2} inverse; for very large \verb{L'}
+(areal L up to ~400 is fine) the bootstrap is the recommended inference path.
 }
 \keyword{internal}

@@ -14,6 +14,10 @@ sim_spmixqr(
   sd = 0.7,
   crossing = FALSE,
   error = c("normal", "ald"),
+  spatial_error = FALSE,
+  lattice = 8L,
+  car_alpha = 0.95,
+  car_rho = 1.5,
   seed = NULL
 )
 }
@@ -37,10 +41,23 @@ control uses 0).}
 
 \item{error}{\code{"normal"} or \code{"ald"} component error.}
 
+\item{spatial_error}{If \code{TRUE}, generate data on a regular \verb{lattice x lattice}
+grid and add a per-regime CAR spatial random effect \code{phi_k} drawn from the
+proper-CAR precision built from the lattice's rook contiguity. The returned list
+then gains \code{spatial_W} (the \code{\link[=spq_weights]{spq_weights()}} object), and \code{truth$phi} (the L x G
+true CAR surface, each column mean-zero) and \code{truth$unit} (observation -> unit).}
+
+\item{lattice}{Side length of the square lattice when \code{spatial_error = TRUE}
+(\code{L = lattice^2} units); \code{n} observations are assigned to units (with repeats).}
+
+\item{car_alpha, car_rho}{Proper-CAR alpha used to build the precision and the
+marginal SD scaling of the simulated CAR effect (\code{car_rho} = phi SD).}
+
 \item{seed}{Optional seed.}
 }
 \value{
-A list with \code{data} (y, x, x2), \code{coords} (n x 2), and \code{truth}.
+A list with \code{data} (y, x, x2), \code{coords} (n x 2), and \code{truth}. With
+\code{spatial_error = TRUE} also \code{spatial_W} and a \code{region} column / \code{truth$phi}.
 }
 \description{
 Generates point (or areal) data from a two-regime spatial mixture of quantile

@@ -4,16 +4,22 @@
 \alias{plot.spmixqr}
 \title{Plot a spatial quantile mixture fit}
 \usage{
-\method{plot}{spmixqr}(x, which = c("gate", "coef", "class", "density"), regime = NULL, ...)
+\method{plot}{spmixqr}(
+  x,
+  which = c("gate", "coef", "phi", "class", "density"),
+  regime = NULL,
+  ...
+)
 }
 \arguments{
 \item{x}{A fitted \link{spmixqr} object.}
 
 \item{which}{One of \code{"gate"} (mixing-probability map), \code{"coef"} (slope-surface
-map), \code{"class"} (classified map), or \code{"density"} (component error densities).}
+map), \code{"phi"} (CAR spatial-error surface), \code{"class"} (classified map), or
+\code{"density"} (component error densities).}
 
-\item{regime}{Which regime to map for \code{"gate"}/\code{"coef"} (default 2 for gate, 1
-for coef).}
+\item{regime}{Which regime to map for \code{"gate"}/\code{"coef"}/\code{"phi"} (default 2 for
+gate, 1 for coef/phi).}
 
 \item{...}{Passed to the underlying plotting call.}
 }

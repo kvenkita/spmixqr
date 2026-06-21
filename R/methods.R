@@ -70,12 +70,28 @@ summary.spmixqr <- function(object, ...) {
     })
     names(gate_tab) <- paste0("regime", 2:object$G, " vs regime1")
   }
+  ## spatial-error (CAR) block
+  car_block <- NULL
+  if (isTRUE(object$spatial_error) && !is.null(object$car)) {
+    moran_after <- NA_real_; moran_p <- NA_real_
+    mo <- object$diagnostics$moran
+    if (!is.null(mo)) {
+      ms <- if (!is.null(mo$after)) mo$after else mo
+      moran_after <- ms$statistic; moran_p <- ms$p_value
+    }
+    var_share <- apply(object$car$phi, 2L, stats::var)
+    car_block <- list(lambda = object$car$lambda, alpha = object$car$alpha,
+                      car = object$car$car, n_units = nrow(object$car$phi),
+                      n_comp = object$car$W$n_comp, var_share = var_share,
+                      moran = moran_after, moran_p = moran_p)
+  }
   out <- list(call = object$call, G = object$G, tau = object$tau,
               method = object$method, comp = comp_tab, gate = gate_tab,
               loglik = object$loglik, edf = object$edf, aic = object$aic,
               bic = object$bic, se_method = object$se_method,
               diagnostics = object$diagnostics, spatial_gate = object$spatial_gate,
-              spatial_coef = object$spatial_coef)
+              spatial_coef = object$spatial_coef,
+              spatial_error = isTRUE(object$spatial_error), car = car_block)
   class(out) <- "summary.spmixqr"
   out
 }
@@ -96,6 +112,18 @@ print.summary.spmixqr <- function(x, ...) {
       stats::printCoefmat(x$gate[[a]], P.values = TRUE, has.Pvalue = TRUE, digits = 4)
     }
     cat("\n")
+  }
+  if (!is.null(x$car)) {
+    cb <- x$car
+    cat("-- Spatial CAR error --\n")
+    cat(sprintf("   units = %d (%s connected component(s));  %s CAR, alpha = %.2f (fixed),  lambda_phi = %.4g\n",
+                cb$n_units, as.character(cb$n_comp), cb$car, cb$alpha, cb$lambda))
+    cat(sprintf("   per-regime spatial variance: %s\n",
+                paste(sprintf("%.3g", cb$var_share), collapse = ", ")))
+    if (is.finite(cb$moran))
+      cat(sprintf("   residual Moran's I = %.4f (perm p = %.3f)\n", cb$moran, cb$moran_p))
+    cat("   note: lambda_phi is selectable by BIC via spmixqr_select() (this fit holds it fixed);\n")
+    cat("         alpha is weakly identified (fixed, not estimated).\n\n")
   }
   cat(sprintf("SE method: %s", x$se_method))
   if (identical(x$se_method, "sandwich"))

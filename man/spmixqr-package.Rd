@@ -21,7 +21,10 @@ Reich, Fuentes and Dunson (2011).
 \item \code{\link[=spmixqr_select]{spmixqr_select()}} --- choose the number of regimes and/or the
 smoothing parameters.
 \item \code{\link[=sim_spmixqr]{sim_spmixqr()}} --- simulate from the model (for validation).
-\item \code{\link[=coef_surface]{coef_surface()}}, \code{\link[=gate_surface]{gate_surface()}} --- spatial-surface accessors.
+\item \code{\link[=coef_surface]{coef_surface()}}, \code{\link[=gate_surface]{gate_surface()}}, \code{\link[=phi_surface]{phi_surface()}} --- spatial-surface
+accessors (slope, gate, and CAR spatial-error surfaces).
+\item \code{\link[=spq_weights]{spq_weights()}} --- build the CAR spatial weights matrix.
+\item \code{\link[=moran_resid]{moran_resid()}} --- residual Moran's I before/after the CAR term.
 }
 }
 

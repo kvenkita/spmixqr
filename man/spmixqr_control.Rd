@@ -24,7 +24,10 @@ spmixqr_control(
   kde_grid = 512L,
   boot_B = 200L,
   boot_block = 4L,
+  boot_areal_blocks = 8L,
   min_sites = 12L,
+  lambda_error_default = 1,
+  car_alpha_grid = c(0.5, 0.9, 0.95, 0.99),
   trace = FALSE,
   seed = NULL
 )
@@ -66,8 +69,17 @@ convolution-smoothed component M-step.}
 \item{boot_B, boot_block}{Bootstrap replicates and number of spatial blocks (per
 axis) for the spatial-block bootstrap.}
 
+\item{boot_areal_blocks}{Target number of contiguous blocks for the areal
+(CAR) block bootstrap (connected-component / graph partition of \code{W}).}
+
 \item{min_sites}{Minimum distinct locations required before a block bootstrap is
 attempted (it under-covers with few blocks; Lahiri 2003).}
+
+\item{lambda_error_default}{Default CAR penalty \code{lambda_phi} when \code{lambda_error}
+is \code{NULL} (the CAR effect's roughness; select by BIC with \code{\link[=spmixqr_select]{spmixqr_select()}}).}
+
+\item{car_alpha_grid}{Candidate proper-CAR \code{alpha} values for the optional coarse
+profile in \code{\link[=spmixqr_select]{spmixqr_select()}} (alpha is fixed by default, not check-loss selected).}
 
 \item{trace}{Logical; print EM progress.}
 

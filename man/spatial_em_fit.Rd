@@ -17,10 +17,15 @@ spatial_em_fit(
   h,
   spatial_coef,
   kdectrl,
-  control
+  control,
+  spatial_error = FALSE
 )
 }
 \description{
-One penalised-EM fit from an initial responsibility matrix.
+When \code{spatial_error = TRUE} the component M-step is \strong{always} routed through the
+penalised CAR solver (\code{\link[=pen_smooth_wqr_car]{pen_smooth_wqr_car()}}) on the augmented \verb{[X, Rt]} design with
+the \code{lambda_phi * Qt} penalty block, regardless of \code{spatial_coef} (the unpenalised
+\code{weighted_rq} branch would silently drop the CAR penalty for the \code{G = 1} /
+constant-slope paths).
 }
 \keyword{internal}
