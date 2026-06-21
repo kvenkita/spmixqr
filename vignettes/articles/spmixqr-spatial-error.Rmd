@@ -116,8 +116,21 @@ cc <- as.matrix(meuse_zinc[, c("x", "y")])
 Wp <- spq_weights(cc, type = "knn", k = 6)
 fit_p <- spmixqr(log(zinc) ~ dist, meuse_zinc, coords = cc, G = 1, tau = 0.5,
                  spatial_error = TRUE, spatial_coef = FALSE, spatial_W = Wp,
-                 variance = "none", control = spmixqr_control(nstart = 1L, seed = 1))
+                 variance = "boot",
+                 control = spmixqr_control(nstart = 1L, seed = 1, boot_B = 50L))
 coef(fit_p)
+```
+
+Because the outcome is `log(zinc)`, the spatial effect is most interpretable on the
+multiplicative scale: `phi_surface(scale = "exp")` reports `exp(phi)`, the factor by
+which zinc runs above or below what distance-to-river predicts. With `ci = TRUE` we keep
+only the locations where that factor is reliably away from 1.
+
+```{r meuse-exp}
+pm <- phi_surface(fit_p, ci = TRUE, scale = "exp")
+range(round(pm$mult, 2))                       # e.g. 1.18 = ~18% above expected
+sprintf("%d of %d sites are credible (zinc reliably above/below expectation)",
+        sum(pm$credible), nrow(pm))
 ```
 
 ## Recovery on a known DGP

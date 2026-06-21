@@ -305,7 +305,7 @@ build_car_slot <- function(beta, car_block, car_obj, car, car_alpha, lam_phi) {
   rownames(phi) <- car_obj$ids
   colnames(phi) <- paste0("regime", seq_len(G))
   list(phi = phi, W = car_obj$spqw, Q = car_obj$Q, alpha = car_alpha, car = car,
-       lambda = lam_phi,
+       lambda = lam_phi, Tmat = car_obj$Tmat, car_block = car_block,
        units = list(ids = car_obj$ids, unit_idx = car_obj$unit_idx,
                     membership = car_obj$membership, mode = car_obj$mode,
                     coords = car_obj$unit_coords))

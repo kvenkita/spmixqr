@@ -8,6 +8,8 @@
   x,
   which = c("gate", "coef", "phi", "class", "density"),
   regime = NULL,
+  credible = FALSE,
+  level = 0.95,
   ...
 )
 }
@@ -20,6 +22,13 @@ map), \code{"phi"} (CAR spatial-error surface), \code{"class"} (classified map),
 
 \item{regime}{Which regime to map for \code{"gate"}/\code{"coef"}/\code{"phi"} (default 2 for
 gate, 1 for coef/phi).}
+
+\item{credible}{For \code{which = "phi"}, show only the \strong{credible} hot/cold spots
+(units whose \code{level} confidence interval for the CAR effect excludes zero); other
+units are greyed. Requires a fit carrying a covariance (\code{variance = "boot"} or
+\code{"sandwich"}).}
+
+\item{level}{Confidence level used when \code{credible = TRUE}.}
 
 \item{...}{Passed to the underlying plotting call.}
 }

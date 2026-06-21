@@ -114,8 +114,13 @@ and pass the region identifier as `coords`.
 reg <- factor(columbus_crime$id)
 fit <- spmixqr(crime ~ income + hoval, data = columbus_crime, coords = reg,
                G = 1, tau = 0.5, spatial_error = TRUE, spatial_coef = FALSE,
-               spatial_W = W, control = spmixqr_control(nstart = 1L, seed = 1))
+               spatial_W = W, variance = "boot",
+               control = spmixqr_control(nstart = 1L, seed = 1, boot_B = 60L))
 fit
+```
+
+```{r boot-note, echo = FALSE, results = "asis"}
+cat("> A small `boot_B` keeps this vignette fast; use a few hundred replicates for reporting.")
 ```
 
 ## 6. Interpreting the estimates
@@ -127,11 +132,10 @@ summary(fit)
 At the median, each extra \$1000 of neighbourhood income is associated with about two
 fewer crimes per 1000 households (`income` $\approx -2.0$), and the association is firmly
 significant. Housing value adds little once income is in the model: its coefficient is
-small and not significant. The standard errors shown are the fast
-**classification-conditional** sandwich, here the smoothed-quantile sandwich of the
-single-population fit. But the asymmetric-Laplace is a *working* likelihood and the data
-are spatially dependent, so the **spatial-block bootstrap** (Section 10) is what to
-report.
+small and not significant. These standard errors come from the **spatial-block
+bootstrap** (`variance = "boot"`), the right choice for spatially dependent data under
+the asymmetric-Laplace working likelihood; a fast classification-conditional sandwich
+(`variance = "sandwich"`) is also available.
 
 ## 7. The headline question: does the income effect vary across the distribution?
 
@@ -174,12 +178,15 @@ left-over crime. After the CAR term, the clustering drops to non-significant
 ($I \approx 0.15$, $p \approx 0.10$). The shift is modest but real: the spatial effect
 absorbs part of the spillover, and what remains no longer clears the usual threshold. The
 fitted $\phi$ are the estimated spatial deviations, the "residual hotspot/coldspot"
-surface that income and housing value do not explain:
+surface that income and housing value do not explain. **The map alone is not enough**:
+a roughness-penalised surface always looks smooth, so we need to know which deviations
+are reliable. `phi_surface(ci = TRUE)` attaches bootstrap standard errors and flags the
+`credible` units whose interval excludes zero.
 
 ```{r phi}
-ph <- phi_surface(fit)
-head(ph)
-range(round(ph$phi, 2))
+ph <- phi_surface(fit, ci = TRUE)              # adds se, lower, upper, credible
+head(round(ph[, c("phi", "se", "lower", "upper")], 2))
+sprintf("%d of %d neighbourhoods are credible hot/cold spots", sum(ph$credible), nrow(ph))
 ```
 
 ## 9. Reading the fit on the map
@@ -194,14 +201,17 @@ library(sf)
 shp <- system.file("shapes/columbus.gpkg", package = "spmixqr")
 cols <- st_read(shp, quiet = TRUE)               # 49 neighbourhood polygons
 st_crs(cols) <- NA                               # Columbus coords are arbitrary planar units
+ps         <- phi_surface(fit, ci = TRUE)        # CAR effect + uncertainty, per region
 cols$crime <- columbus_crime$crime
-cols$phi   <- phi_surface(fit)$phi               # the CAR spatial effect, per region
+cols$phi   <- ps$phi                             # the CAR spatial effect
+cols$credible_phi <- ifelse(ps$credible, ps$phi, NA)   # keep only reliable hot/cold spots
 cols$resid <- residuals(fit)                     # observed minus fitted median crime
 ```
 
 A choropleth of $\phi$ shows where crime runs higher (red) or lower (blue) than income
-and housing value predict, after the spatial smoothing. A second map of the residuals
-shows what the whole model still misses.
+and housing value predict. But the interpretable map is the **credible** one: the same
+surface with the unreliable cells greyed out, so the reader sees only the hot/cold spots
+the data actually support. A residual map shows what the whole model still misses.
 
 ```{r map-phi, eval = has_map, fig.alt = "Choropleth of the CAR spatial effect across Columbus"}
 library(ggplot2)
@@ -210,9 +220,25 @@ ggplot(cols) +
   geom_sf(aes(fill = phi), colour = "grey40", linewidth = 0.2) +
   scale_fill_gradient2(low = "#2c7bb6", mid = "grey92", high = "#d7191c") +
   labs(title = "CAR spatial effect on crime",
-       subtitle = "residual neighbourhood level not explained by income or housing value",
+       subtitle = "residual neighbourhood level (crimes per 1000) beyond income and housing",
        fill = expression(phi))
 ```
+
+```{r map-credible, eval = has_map, fig.alt = "Credible CAR hot/cold spots across Columbus"}
+ggplot(cols) +
+  geom_sf(aes(fill = credible_phi), colour = "grey40", linewidth = 0.2) +
+  scale_fill_gradient2(low = "#2c7bb6", mid = "grey92", high = "#d7191c",
+                       na.value = "grey92") +
+  labs(title = "Credible hot/cold spots only",
+       subtitle = "grey = interval includes zero (not reliably different from expected)",
+       fill = expression(phi))
+```
+
+Read a credible $\phi$ in the outcome's own units: a value of, say, $+8$ means the
+median crime rate there is about eight crimes per 1000 households **above** what income
+and housing value predict, reliably so. (When the outcome is modelled on the log scale,
+`phi_surface(scale = "exp")` instead reports `exp(phi)` as a multiplier --- 1.18 reads as
+"about 18% above expected" --- which the `vignette("spmixqr-spatial-error")` shows.)
 
 ```{r map-resid, eval = has_map, fig.alt = "Choropleth of model residuals across Columbus"}
 ggplot(cols) +

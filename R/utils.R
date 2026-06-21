@@ -36,6 +36,10 @@ rho_tau <- function(u, tau) u * (tau - (u < 0))
 #' @keywords internal
 .dnorm <- function(x) stats::dnorm(x)
 
+#' Vectorised isTRUE: TRUE where x is TRUE, FALSE for FALSE/NA.
+#' @keywords internal
+isTRUE_vec <- function(x) !is.na(x) & x
+
 #' Symmetrise a matrix (numerical hygiene for covariances).
 #'
 #' Coerces a \pkg{Matrix} S4 object to a base dense matrix first, so the result is

@@ -1,3 +1,19 @@
+# spmixqr 0.2.4
+
+More interpretable spatial-error (CAR) coefficients.
+
+* `phi_surface()` gains `ci = TRUE` (adds bootstrap `se`, `lower`, `upper`, and a
+  `credible` flag for units whose interval excludes zero) and `scale = "exp"` (adds
+  `mult = exp(phi)`, the multiplicative deviation for log-outcome models, e.g. 1.18 =
+  "about 18% above expected"). Standard errors propagate the fit's coefficient
+  covariance through the sum-to-zero constraint, `Var(phi) = T V T'`; the bootstrap is
+  recommended over the sandwich, which ignores the penalty.
+* `plot(fit, which = "phi", credible = TRUE)` greys out units that are not reliably
+  different from zero, mapping only the credible hot/cold spots.
+* The primer now reads the spatial effect with uncertainty (a credible-hotspot map and
+  an outcome-scale interpretation); the spatial-error article shows the `exp()`
+  multiplicative reading on log zinc.
+
 # spmixqr 0.2.3
 
 Mixture example moved to a larger, appropriate dataset. Documentation/data only.

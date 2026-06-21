@@ -40,40 +40,99 @@ coef_surface <- function(object, newcoords = NULL, covariate = 1L) {
   out
 }
 
-#' CAR spatial-error surfaces
+#' CAR spatial-error surfaces (with uncertainty)
 #'
 #' Returns the per-regime CAR spatial random effect `phi_k` (the mean-zero
-#' spatial-level surface) as a tidy data frame for mapping, mirroring [coef_surface()]
-#' and [gate_surface()]. One row per (unit, regime).
+#' spatial-level deviation, on the response scale at the fitted quantile) as a tidy
+#' data frame for mapping, mirroring [coef_surface()] and [gate_surface()]. One row per
+#' (unit, regime). With `ci = TRUE` it adds standard errors and a confidence interval,
+#' and flags the `credible` units whose interval excludes zero (reliable hot/cold
+#' spots, as distinct from smoothing). With `scale = "exp"` it adds the multiplicative
+#' deviation `mult = exp(phi)` (interpretable for log-outcome models: e.g. `mult` 1.18
+#' means the outcome runs about 18% above what the covariates predict there).
 #'
 #' @param object A fitted [spmixqr] object with `spatial_error = TRUE`.
 #' @param newunits Optional unit identifiers to restrict / reorder the output
 #'   (validated against the CAR unit ids). `NULL` uses all training units.
-#' @return A data frame with `unit`, `regime`, and `phi`.
+#' @param ci Add `se`, `lower`, `upper`, and `credible` columns. Requires the fit to
+#'   carry a covariance (`variance = "boot"`, recommended, or `"sandwich"`).
+#' @param level Confidence level for the interval.
+#' @param scale `"link"` (the response/quantile scale, default) or `"exp"` (add the
+#'   multiplicative deviation `exp(phi)`, for log-outcome models).
+#' @return A data frame with `unit`, `regime`, `phi`, and (per `ci`/`scale`) `se`,
+#'   `lower`, `upper`, `credible`, `mult`, `mult_lower`, `mult_upper`.
 #' @examples
 #' \donttest{
 #' d <- sim_spmixqr(n = 200, G = 1, tau = 0.5, spatial_error = TRUE, lattice = 6,
 #'                  seed = 1)
 #' fit <- spmixqr(y ~ x, d$data, coords = d$region, G = 1, tau = 0.5,
 #'                spatial_error = TRUE, spatial_coef = FALSE, spatial_W = d$spatial_W,
-#'                variance = "none", control = spmixqr_control(nstart = 1L, seed = 1))
-#' head(phi_surface(fit))
+#'                control = spmixqr_control(nstart = 1L, seed = 1))
+#' head(phi_surface(fit, ci = TRUE))
 #' }
 #' @export
-phi_surface <- function(object, newunits = NULL) {
+phi_surface <- function(object, newunits = NULL, ci = FALSE, level = 0.95,
+                        scale = c("link", "exp")) {
   if (!isTRUE(object$spatial_error) || is.null(object$car))
     stop("This model has no CAR spatial-error term (`spatial_error = FALSE`).")
+  scale <- match.arg(scale)
   phi <- object$car$phi
   ids <- object$car$units$ids
-  if (!is.null(newunits)) {
-    sel <- match(as.character(newunits), ids)
-    if (anyNA(sel)) stop("`newunits` contains units not seen in training.")
-    phi <- phi[sel, , drop = FALSE]; ids <- ids[sel]
-  }
+  se <- if (ci) phi_se(object) else NULL
+  sel <- if (is.null(newunits)) seq_along(ids) else match(as.character(newunits), ids)
+  if (anyNA(sel)) stop("`newunits` contains units not seen in training.")
+  phi <- phi[sel, , drop = FALSE]; ids <- ids[sel]
+  if (!is.null(se)) se <- se[sel, , drop = FALSE]
   G <- ncol(phi); L <- nrow(phi)
-  data.frame(unit = factor(rep(ids, times = G), levels = ids),
-             regime = factor(rep(seq_len(G), each = L)),
-             phi = as.numeric(phi))
+  out <- data.frame(unit = factor(rep(ids, times = G), levels = ids),
+                    regime = factor(rep(seq_len(G), each = L)),
+                    phi = as.numeric(phi))
+  if (ci) {
+    if (is.null(se)) {
+      warning("No standard errors available (fit with variance = \"boot\" or ",
+              "\"sandwich\"); CI columns are NA.", call. = FALSE)
+      out$se <- NA_real_; out$lower <- NA_real_; out$upper <- NA_real_
+    } else {
+      z <- stats::qnorm(1 - (1 - level) / 2)
+      out$se <- as.numeric(se)
+      out$lower <- out$phi - z * out$se
+      out$upper <- out$phi + z * out$se
+      ## "credible": the interval excludes zero (a reliable hot/cold spot)
+      out$credible <- is.finite(out$se) & (out$lower > 0 | out$upper < 0)
+    }
+  }
+  if (scale == "exp") {
+    out$mult <- exp(out$phi)             # multiplicative deviation (log-outcome models)
+    if (!is.null(out$lower)) { out$mult_lower <- exp(out$lower); out$mult_upper <- exp(out$upper) }
+  }
+  out
+}
+
+#' Standard errors of the CAR spatial effect phi (L x G).
+#'
+#' Propagates the fit's stored coefficient covariance through the sum-to-zero
+#' constraint transform: `Var(phi_k) = T V_red,k T'`, with `V_red,k` the CAR sub-block
+#' of the regime-k coefficient covariance and `T` the constraint-absorption basis. The
+#' **bootstrap** (`variance = "boot"`) is recommended: it refits the penalised pipeline
+#' and so reflects the shrinkage of the random effect, whereas the classification-
+#' conditional sandwich is a fast alternative that ignores the penalty and can disagree.
+#' With few spatial blocks the bootstrap intervals can be optimistic (small-sample
+#' caveat). Returns `NULL` if no covariance is stored.
+#' @keywords internal
+phi_se <- function(object) {
+  V <- object$vcov
+  if (is.null(V) || is.null(V$coef)) return(NULL)
+  Tm <- object$car$Tmat; cb <- object$car$car_block
+  L <- nrow(object$car$phi); G <- ncol(object$car$phi)
+  if (is.null(Tm) || length(cb) == 0L) return(matrix(0, L, G))
+  Tm <- as.matrix(Tm)
+  vapply(seq_len(G), function(k) {
+    Vk <- V$coef[[k]]
+    if (is.null(Vk)) return(rep(NA_real_, L))
+    Vred <- as.matrix(Vk)[cb, cb, drop = FALSE]
+    Vphi <- Tm %*% Vred %*% t(Tm)
+    sqrt(pmax(diag(Vphi), 0))
+  }, numeric(L))
 }
 
 #' Spatial gate surfaces

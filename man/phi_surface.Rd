@@ -2,23 +2,43 @@
 % Please edit documentation in R/surfaces.R
 \name{phi_surface}
 \alias{phi_surface}
-\title{CAR spatial-error surfaces}
+\title{CAR spatial-error surfaces (with uncertainty)}
 \usage{
-phi_surface(object, newunits = NULL)
+phi_surface(
+  object,
+  newunits = NULL,
+  ci = FALSE,
+  level = 0.95,
+  scale = c("link", "exp")
+)
 }
 \arguments{
 \item{object}{A fitted \link{spmixqr} object with \code{spatial_error = TRUE}.}
 
 \item{newunits}{Optional unit identifiers to restrict / reorder the output
 (validated against the CAR unit ids). \code{NULL} uses all training units.}
+
+\item{ci}{Add \code{se}, \code{lower}, \code{upper}, and \code{credible} columns. Requires the fit to
+carry a covariance (\code{variance = "boot"}, recommended, or \code{"sandwich"}).}
+
+\item{level}{Confidence level for the interval.}
+
+\item{scale}{\code{"link"} (the response/quantile scale, default) or \code{"exp"} (add the
+multiplicative deviation \code{exp(phi)}, for log-outcome models).}
 }
 \value{
-A data frame with \code{unit}, \code{regime}, and \code{phi}.
+A data frame with \code{unit}, \code{regime}, \code{phi}, and (per \code{ci}/\code{scale}) \code{se},
+\code{lower}, \code{upper}, \code{credible}, \code{mult}, \code{mult_lower}, \code{mult_upper}.
 }
 \description{
 Returns the per-regime CAR spatial random effect \code{phi_k} (the mean-zero
-spatial-level surface) as a tidy data frame for mapping, mirroring \code{\link[=coef_surface]{coef_surface()}}
-and \code{\link[=gate_surface]{gate_surface()}}. One row per (unit, regime).
+spatial-level deviation, on the response scale at the fitted quantile) as a tidy
+data frame for mapping, mirroring \code{\link[=coef_surface]{coef_surface()}} and \code{\link[=gate_surface]{gate_surface()}}. One row per
+(unit, regime). With \code{ci = TRUE} it adds standard errors and a confidence interval,
+and flags the \code{credible} units whose interval excludes zero (reliable hot/cold
+spots, as distinct from smoothing). With \code{scale = "exp"} it adds the multiplicative
+deviation \code{mult = exp(phi)} (interpretable for log-outcome models: e.g. \code{mult} 1.18
+means the outcome runs about 18\% above what the covariates predict there).
 }
 \examples{
 \donttest{
@@ -26,7 +46,7 @@ d <- sim_spmixqr(n = 200, G = 1, tau = 0.5, spatial_error = TRUE, lattice = 6,
                  seed = 1)
 fit <- spmixqr(y ~ x, d$data, coords = d$region, G = 1, tau = 0.5,
                spatial_error = TRUE, spatial_coef = FALSE, spatial_W = d$spatial_W,
-               variance = "none", control = spmixqr_control(nstart = 1L, seed = 1))
-head(phi_surface(fit))
+               control = spmixqr_control(nstart = 1L, seed = 1))
+head(phi_surface(fit, ci = TRUE))
 }
 }
