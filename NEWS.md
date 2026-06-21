@@ -1,3 +1,15 @@
+# spmixqr 0.2.3
+
+Mixture example moved to a larger, appropriate dataset. Documentation/data only.
+
+* New built-in dataset `lucas_house`: a 2000-row subsample of Lucas County, Ohio house
+  sales. The primer's mixture example (Example B) now fits a two-regime spatially gated
+  mixture of quantile regressions there (housing submarkets that discount age at
+  different rates), with point maps of the gate-probability surface, the assigned
+  submarket, and the residuals. The 49-neighbourhood Columbus data is too small to
+  resolve a mixture and is no longer used for it (it remains Example A, the single-region
+  CAR fit).
+
 # spmixqr 0.2.2
 
 Primer expanded with maps and a mixture example. Documentation only.

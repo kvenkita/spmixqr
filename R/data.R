@@ -106,3 +106,26 @@
 #' data(columbus_W)
 #' dim(columbus_W)
 "columbus_W"
+
+#' Lucas County (Ohio) house sales (subsample)
+#'
+#' A seeded random subsample of 2000 single-family house sales in Lucas County, Ohio
+#' (1993--1998), used to illustrate a finite **mixture** of spatial quantile regressions
+#' (housing submarkets) on point data. Price is strongly right-skewed, so the tails and
+#' latent submarkets are worth modelling.
+#'
+#' @format A data frame with 2000 rows (sales) and 6 variables:
+#' \describe{
+#'   \item{price}{Sale price (USD).}
+#'   \item{tla}{Total living area (square feet).}
+#'   \item{age}{Age of the dwelling at sale (in centuries; range about 0--1.4).}
+#'   \item{rooms}{Number of rooms.}
+#'   \item{x, y}{Projected coordinates (feet).}
+#' }
+#' @source A subsample (seed 7) of the `house` data in the \pkg{spData} package (Lucas
+#'   County Auditor; see also Pace and LeSage). Built offline; see
+#'   `data-raw/make_lucas.R`.
+#' @examples
+#' data(lucas_house)
+#' summary(lucas_house$price)
+"lucas_house"

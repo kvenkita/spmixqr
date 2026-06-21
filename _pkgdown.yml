@@ -49,6 +49,7 @@ reference:
   - sim_spmixqr
   - columbus_crime
   - columbus_W
+  - lucas_house
   - nc_sids
   - nc_sids_W
   - meuse_zinc

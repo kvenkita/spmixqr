@@ -31,11 +31,14 @@ Columbus, Ohio neighbourhood-crime dataset from start to finish, in two examples
 * **Example A** — a single-population spatial-error (CAR) quantile regression: build the
   weights, fit, read the coefficients across the distribution, and absorb the residual
   spatial autocorrelation.
-* **Example B** — a two-regime **mixture** of quantile regressions: uncover latent
-  neighbourhood crime regimes and map them.
+* **Example B** — a two-regime **mixture** of quantile regressions on a larger dataset
+  (Lucas County, Ohio house sales): uncover latent housing *submarkets* with a spatial
+  gate and map them.
 
-Throughout we start from a **shapefile**, read it as an `sf` map, and put the estimates
-and residuals back on the map as choropleths alongside the usual tables.
+In Example A we start from a **shapefile**, read it as an `sf` map, and put the estimates
+and residuals back on the map as choropleths alongside the tables; Example B does the
+same on point geometry. A mixture needs more units than the 49 Columbus neighbourhoods,
+which is why it uses the larger housing data.
 
 ## 1. The question
 
@@ -233,53 +236,79 @@ ggplot(data.frame(tau = taus, income = inc), aes(tau, income)) +
 
 The slope grows more negative as we move up the crime distribution.
 
-## 10. Example B: a mixture of crime regimes
+## 10. Example B: a mixture of housing submarkets
 
-So far one relationship held for every neighbourhood. A **mixture** (`G = 2`) instead
-lets the data split into latent *regimes* — neighbourhood types with their own
-crime/income relationship — and assigns each area a posterior probability of belonging
-to each. Here we fit two regimes with a constant gate (no spatial term), which keeps
-the example self-contained; a covariate or spatial gate is the next step.
+A mixture needs enough data to resolve distinct regimes, so for this example we turn to
+a larger dataset: roughly two thousand **house sales in Lucas County, Ohio** (a seeded
+subsample of the classic real-estate data, shipped as `lucas_house`). The question is
+whether a single price equation fits the whole county, or whether there are **submarkets**
+— groups of homes whose price responds differently to size and age — and where they are.
+These are *point* observations, so we use point coordinates rather than polygons.
 
-```{r mixfit}
-fit2 <- spmixqr(crime ~ income + hoval, data = columbus_crime, G = 2, tau = 0.5,
-                spatial_gate = FALSE, spatial_coef = FALSE,
-                control = spmixqr_control(nstart = 8L, seed = 1))
-round(coef(fit2), 2)        # one column per regime
-table(regime = predict(fit2, type = "class"))
+```{r lucas-data}
+data(lucas_house)
+lucas <- transform(lucas_house, lprice = log(price), ltla = log(tla))
+nrow(lucas)
 ```
 
-The two regimes are distinct. One (the smaller group) has a **high baseline** crime
-level and a **steep** income gradient — income near $-2.8$ — so income separates
-neighbourhoods sharply there. The other (the larger group) has a **lower baseline** and
-a **gentler** income gradient (near $-1.4$). The mixture has found that the
-income–crime relationship is not one curve but two.
+A `G = 2` mixture lets the data split into two latent regimes. We give the mixing a
+**spatial gate** (`spatial_gate = TRUE`), so the probability of belonging to each
+submarket is a smooth surface over the county rather than a constant. BIC prefers the
+mixture decisively over a single equation here.
 
-Mapping the regime each neighbourhood is assigned to shows the split is spatially
-coherent even though the gate used no location information: the high-gradient regime
-concentrates rather than scattering at random.
-
-```{r map-regime, eval = has_map, fig.alt = "Choropleth of mixture regime membership across Columbus"}
-cols$regime <- factor(predict(fit2, type = "class"))
-cols$p2     <- predict(fit2, type = "posterior")[, 2]
-ggplot(cols) +
-  geom_sf(aes(fill = regime), colour = "grey40", linewidth = 0.2) +
-  scale_fill_brewer(palette = "Set2") +
-  labs(title = "Assigned crime regime", fill = "regime")
+```{r lucas-fit}
+coords <- as.matrix(lucas[, c("x", "y")])
+fitm <- spmixqr(lprice ~ ltla + age, data = lucas, coords = coords,
+                G = 2, tau = 0.5, spatial_gate = TRUE, spatial_coef = FALSE,
+                control = spmixqr_control(nstart = 4L, k = 20L, seed = 1))
+round(coef(fitm), 2)          # one column per submarket
 ```
 
-```{r map-resid2, eval = has_map, fig.alt = "Choropleth of mixture-model residuals across Columbus"}
-cols$resid2 <- residuals(fit2)
-ggplot(cols) +
-  geom_sf(aes(fill = resid2), colour = "grey40", linewidth = 0.2) +
-  scale_fill_gradient2(low = "#2c7bb6", mid = "grey92", high = "#d7191c") +
-  labs(title = "Mixture-model residuals", fill = "resid")
+Both regimes share a price–size elasticity near 0.9 (a 1% larger home costs about 0.9%
+more), but they differ in how steeply price falls with age: one submarket discounts age
+**mildly** (age coefficient near $-0.8$), the other **steeply** (near $-1.7$, on the
+per-century age scale of these data). The mixture has found two price processes where a
+single regression would impose one.
+
+The spatial gate makes the probability of the steep-discount submarket a surface. We map
+that surface, the assigned submarket, and the residuals on the point geometry.
+
+```{r lucas-sf, eval = has_sf, message = FALSE}
+lucas_sf <- st_as_sf(lucas, coords = c("x", "y"))
+lucas_sf$p_steep <- gate_surface(fitm)$prob[gate_surface(fitm)$regime == "2"]
+lucas_sf$regime  <- factor(apply(predict(fitm, type = "posterior"), 1, which.max))
+lucas_sf$resid   <- residuals(fitm)
 ```
 
-The residual map is the reality check: a mixture can fit closely in-sample, so look for
-spatial pattern left in the residuals. With only 49 units two regimes is about as far as
-the data support; for a spatially *driven* gate, or regime-specific spatial-error terms,
-you need more units (and `vignette("spmixqr-mixtures")` covers the gate machinery).
+```{r lucas-gate, eval = has_map, fig.alt = "Map of the spatial gate probability across Lucas County"}
+ggplot(lucas_sf) +
+  geom_sf(aes(colour = p_steep), size = 0.6) +
+  scale_colour_viridis_c(limits = c(0, 1)) +
+  labs(title = "Spatial gate: P(steep age-discount submarket)", colour = "prob")
+```
+
+```{r lucas-regime, eval = has_map, fig.alt = "Map of assigned housing submarket across Lucas County"}
+ggplot(lucas_sf) +
+  geom_sf(aes(colour = regime), size = 0.6) +
+  scale_colour_brewer(palette = "Set2") +
+  labs(title = "Assigned submarket", colour = "regime")
+```
+
+The gate surface localises the steep-discount submarket to part of the county rather than
+scattering it at random — the mixing is genuinely spatial. The residual map is the
+reality check: a flexible mixture can fit closely in-sample, so look for spatial pattern
+left behind.
+
+```{r lucas-resid, eval = has_map, fig.alt = "Map of mixture-model residuals across Lucas County"}
+ggplot(lucas_sf) +
+  geom_sf(aes(colour = resid), size = 0.6) +
+  scale_colour_gradient2(low = "#2c7bb6", mid = "grey85", high = "#d7191c") +
+  labs(title = "Mixture-model residuals", colour = "resid")
+```
+
+For reporting, the spatial-block bootstrap (`variance = "boot"`) carries the regime
+labels through resampling; the `vignette("spmixqr-mixtures")` covers the gate and
+slope-surface machinery in full.
 
 ## 11. Diagnostics: can you trust it?
 
