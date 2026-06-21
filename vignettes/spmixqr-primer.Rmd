@@ -1,0 +1,211 @@
+---
+title: "A primer on spatial quantile mixture models"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+bibliography: spmixqr.bib
+vignette: >
+  %\VignetteIndexEntry{A primer on spatial quantile mixture models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6.5,
+                      fig.height = 4.2, dpi = 96)
+has_gg <- requireNamespace("ggplot2", quietly = TRUE)
+```
+
+```{r setup}
+library(spmixqr)
+set.seed(1)
+```
+
+This primer is for a researcher who has spatial data and a distributional question
+but no prior exposure to spatial quantile mixtures. It walks from the question to a
+reproducible report, using a built-in version of the Meuse river soil dataset.
+
+## 1. The question
+
+Soil zinc near the river Meuse is contaminated unevenly. Two questions a mean
+regression cannot answer:
+
+* How does a **quantile** of contamination (here the median, though any `tau` works,
+  including the upper tail) respond to distance from the river, and does that
+  response **change across the flood plain**?
+* Are there latent **regimes**, patches that behave like a different contamination
+  process, and where are they?
+
+`spmixqr` answers both at once. It splits the area into latent regimes whose
+membership drifts smoothly over space, fits a quantile regression in each, and lets
+each regime's covariate effect be a spatial surface.
+
+## 2. The model in one page
+
+For a chosen quantile level $\tau$ (say the 0.9 upper tail), each observation belongs
+to one of $G$ latent regimes. The probability of regime $k$ at location $s$ is a
+smooth spatial surface, a softmax of a spatial basis (the *gate*). Within regime
+$k$, the $\tau$-th conditional quantile of the response is a linear predictor whose
+slopes vary over space:
+$$ Q_\tau(y \mid \text{regime }k, x, s) = \beta_{k0} + \sum_{j} x_j\,\beta_{kj}(s). $$
+The intercept $\beta_{k0}$ is a scalar. Spatial level variation is carried by the
+gate, since a free spatial intercept surface is not separately identified from it.
+Estimation is a penalised EM that reuses the `mixqr` quantile-regression core
+[@wuyao2016] for the components and a spatially penalised multinomial-logit gate
+[@fernandezgreen2002; @beraha2021]. The component step uses a convolution-smoothed
+check loss [@fgh2021; @tanwangzhou2022] so a roughness penalty can be applied. The
+single-regime case is a penalised spatially-varying-coefficient quantile regression
+in the lineage of @reich2011.
+
+## 3. The data
+
+```{r data}
+data(meuse_zinc)
+meuse_zinc$lzinc <- log(meuse_zinc$zinc)
+str(meuse_zinc)
+```
+
+`lzinc` is log zinc (ppm); `dist` is normalised distance to the river; `x`, `y` are
+coordinates. Zinc is right-skewed and decays with distance, but the *rate* of decay
+plausibly differs across the plain.
+
+## 4. Fitting your first model
+
+We model the conditional median ($\tau = 0.5$) of log zinc as a function of distance,
+with two spatial regimes. Refit with `tau = 0.9` to study the upper tail.
+
+```{r fit}
+fit <- spmixqr(lzinc ~ dist, data = meuse_zinc, coords = c("x", "y"),
+               G = 2, tau = 0.5, variance = "sandwich",
+               control = spmixqr_control(nstart = 5L, k = 15L, seed = 1))
+fit
+```
+
+The fit reports a `label_stability` of about 0.26: the two regimes' distance-effect
+surfaces cross at roughly a quarter of locations, so the global "regime 1 / regime 2"
+labels are coherent across most, but not all, of the plain. Section 9 returns to this;
+read the maps below with that caveat in mind.
+
+## 5. Interpreting the estimates
+
+```{r summary}
+summary(fit)
+```
+
+Each regime has its own intercept (overall contamination level) and an average
+distance slope. A steep negative slope means zinc falls quickly away from the river;
+a flat slope means a regime where distance barely matters (persistent contamination).
+The gate block reports any gating-covariate effects; here the spatial field does the
+work, so read the gate as a *map* (next section), not a coefficient.
+
+## 6. Getting the uncertainty right
+
+Two cautions are built in. The asymmetric-Laplace likelihood is a *working*
+likelihood, and the sandwich standard errors above are *classification-conditional*:
+they treat the regime labels as known, so they tend to be optimistic. For reporting,
+prefer the spatial-block bootstrap, which refits the whole pipeline and aligns labels
+across replicates:
+
+```{r boot, eval = FALSE}
+fit_boot <- spmixqr(lzinc ~ dist, data = meuse_zinc, coords = c("x", "y"),
+                    G = 2, tau = 0.5, variance = "boot",
+                    control = spmixqr_control(nstart = 5L, k = 15L, seed = 1,
+                                              boot_B = 200L, boot_block = 3L))
+```
+
+## 7. The headline question, answered
+
+Does the distance effect on the median vary across space? The slope surface
+answers it directly.
+
+```{r slope-surface}
+cs <- coef_surface(fit, covariate = 1)
+tapply(cs$slope, cs$regime, function(s) round(range(s), 2))
+```
+
+A wide slope range means the distance effect is genuinely spatial within that regime,
+not a single number.
+
+## 8. Reading the fit in pictures
+
+```{r maps, eval = has_gg, fig.alt = "Gate and slope-surface maps"}
+library(ggplot2)
+theme_set(theme_minimal(base_size = 11))
+
+gs <- gate_surface(fit)
+ggplot(subset(gs, regime == "2"), aes(coord1, coord2, colour = prob)) +
+  geom_point(size = 2) +
+  scale_colour_viridis_c(limits = c(0, 1)) +
+  labs(title = "Where regime 2 dominates", x = "easting", y = "northing",
+       colour = "P(regime 2)")
+```
+
+```{r slope-map, eval = has_gg, fig.alt = "Slope surface map"}
+ggplot(cs, aes(coord1, coord2, colour = slope)) +
+  geom_point(size = 2) + facet_wrap(~ regime) +
+  scale_colour_viridis_c(option = "magma") +
+  labs(title = "Distance-effect surface by regime", x = "easting", y = "northing")
+```
+
+## 9. Diagnostics: can you trust it?
+
+```{r diag}
+d <- fit$diagnostics
+c(converged = d$converged, starts = d$n_starts,
+  gate_cond = round(d$gate_cond, 1),
+  class_entropy = round(d$class_entropy, 2),
+  label_stability = round(d$label_stability, 2))
+```
+
+`class_entropy` near 0 means confident classification; near 1 means overlapping
+regimes. `label_stability` is the fraction of locations where the regime slope
+surfaces cross: a high value warns that a single global label is only approximately
+coherent across space (a known v1 limitation). Here it sits near 0.26.
+
+**A negative control.** When there is no spatial structure, the method should report
+none. We simulate a constant gate and flat slopes, then check that the gate surface
+stays flat:
+
+```{r negctrl}
+nc <- sim_spmixqr(n = 200, gate_slope = 0, coef_slope = 0, seed = 7)
+fit_nc <- spmixqr(y ~ x, nc$data, coords = nc$coords, G = 2, tau = 0.5,
+                  lambda_gate = 10, lambda_coef = 10, variance = "none",
+                  control = spmixqr_control(nstart = 4L, seed = 1))
+g_nc <- gate_surface(fit_nc)
+round(sd(g_nc$prob[g_nc$regime == "2"]), 3)   # small => no manufactured structure
+```
+
+## 10. Practical guidance and pitfalls
+
+* **Keep `G` small** (2--3). Spatial mixtures are data-hungry, and label coherence
+  degrades as regimes proliferate.
+* **Standardise coordinates.** This is handled internally, but supply coordinates on
+  a sensible common scale.
+* **Choose the smoothing** with `spmixqr_select()` (BIC or cross-validated check
+  loss) rather than guessing `lambda_gate`/`lambda_coef`.
+* **Report bootstrap intervals**, not the sandwich, for inference.
+* Watch the `label_stability` warning: crossing slope surfaces mean the regime
+  identities are not globally fixed.
+
+## 11. How `spmixqr` relates to other tools
+
+`quantreg` fits one quantile regression with no spatial structure; `mixqr` adds
+latent regimes but fixed mixing; `mixqrgate` lets mixing depend on covariates.
+`spmixqr` makes the mixing *spatial* and the component effects *spatial surfaces*. No
+maintained R package fits spatial quantile regression (`BSquare` and `McSpatial` are
+archived), so the single-regime case fills that gap too [@reich2011].
+
+## 12. Reporting and reproducibility
+
+```{r report}
+list(tau = fit$tau, G = fit$G,
+     intercepts = round(fit$beta_const[1, ], 2),
+     avg_slopes = round(fit$beta_const[2, ], 2),
+     bic = round(fit$bic, 1))
+```
+
+A spatial quantile mixture turns "how does contamination respond to distance" into a
+*map* of regime-specific tail responses. Through the diagnostics and the negative
+control, it declines to invent structure the data do not support.
+
+## References

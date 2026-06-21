@@ -1,0 +1,18 @@
+citHeader("To cite spmixqr in publications use:")
+
+bibentry(
+  bibtype  = "Manual",
+  title    = "spmixqr: Spatial Finite Mixtures of Quantile Regressions",
+  author   = person(c("Kailas", "Venkitasubramanian")),
+  year     = "2026",
+  note     = "R package version 0.1.0",
+  url      = "https://github.com/kvenkita/spmixqr",
+  textVersion = paste(
+    "Venkitasubramanian, K. (2026).",
+    "spmixqr: Spatial Finite Mixtures of Quantile Regressions.",
+    "R package version 0.1.0. https://github.com/kvenkita/spmixqr")
+)
+
+citFooter("The method builds on Reich, Fuentes & Dunson (2011, JASA 106:6-20),",
+          "Wu & Yao (2016, CSDA 93:162-176), and Fernandes, Guerre & Horta",
+          "(2021, JBES 39:338-357).")

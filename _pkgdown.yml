@@ -1,0 +1,56 @@
+url: https://kvenkita.github.io/spmixqr/
+
+template:
+  bootstrap: 5
+  bslib:
+    primary: "#1b5e57"
+
+home:
+  title: Spatial finite mixtures of quantile regressions
+  description: >
+    Latent regimes with spatially varying mixing and spatially varying
+    quantile-regression slopes, with classification-aware inference.
+
+navbar:
+  structure:
+    left: [intro, primer, reference, news]
+    right: [manual, search, github]
+  components:
+    primer:
+      text: Primer
+      href: articles/spmixqr-primer.html
+    manual:
+      text: Reference manual
+      href: spmixqr-reference-manual.pdf
+
+reference:
+- title: Model fitting
+  desc: Fit a spatial quantile mixture and configure the EM.
+  contents:
+  - spmixqr
+  - spmixqr_control
+- title: Model selection
+  contents:
+  - spmixqr_select
+- title: Spatial basis, surfaces, and prediction
+  contents:
+  - spmixqr_basis
+  - coef_surface
+  - gate_surface
+  - predict.spmixqr
+  - plot.spmixqr
+- title: Simulation and data
+  contents:
+  - sim_spmixqr
+  - meuse_zinc
+- title: Package
+  contents:
+  - spmixqr-package
+
+articles:
+- title: Articles
+  navbar: ~
+  contents:
+  - spmixqr
+  - spmixqr-primer
+  - articles/spmixqr-validation

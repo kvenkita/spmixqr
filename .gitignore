@@ -1,0 +1,13 @@
+docs/
+*-reference-manual.pdf
+*.Rcheck/
+*.tar.gz
+inst/doc/
+.Rproj.user/
+.Rhistory
+.RData
+*.o
+*.so
+_*.R
+/doc/
+/Meta/

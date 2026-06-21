@@ -1,0 +1,31 @@
+Package: spmixqr
+Type: Package
+Title: Spatial Finite Mixtures of Quantile Regressions
+Version: 0.1.0
+Authors@R: person(c("Kailas", "Venkitasubramanian"), email = "kailasv@gmail.com",
+    role = c("aut", "cre"))
+Description: Fits spatial finite mixtures of quantile regressions: latent regimes
+    whose mixing probabilities vary over space through a spatial process, with
+    quantile-regression components whose covariate effects are spatially varying
+    surfaces. A penalised expectation-maximisation algorithm reuses the 'mixqr'
+    estimation core (Wu and Yao (2016) <doi:10.1016/j.csda.2015.08.013>) for the
+    component fits and a vendored, spatially penalised multinomial-logit gate. The
+    spatial basis and roughness penalties are built with 'mgcv' thin-plate, low-rank
+    Gaussian-process, or Markov-random-field smooths. The single-regime case is a
+    maintained penalised spatially-varying-coefficient quantile regression in the
+    lineage of Reich, Fuentes and Dunson (2011) <doi:10.1198/jasa.2010.ap09237>.
+    Inference is classification-aware: a fast sandwich and a spatial-block bootstrap
+    (recommended for reporting).
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.1)
+Imports: mixqr (>= 0.2.0), mgcv, stats, graphics, grDevices, utils
+Suggests: mixqrgate, spdep, quantreg, numDeriv, ggplot2,
+    testthat (>= 3.0.0), knitr, rmarkdown
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+URL: https://github.com/kvenkita/spmixqr, https://kvenkita.github.io/spmixqr/
+BugReports: https://github.com/kvenkita/spmixqr/issues

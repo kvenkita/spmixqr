@@ -1,0 +1,56 @@
+#' Plot a spatial quantile mixture fit
+#'
+#' Base-graphics maps and diagnostics. Richer \pkg{ggplot2} maps are shown in the
+#' package primer.
+#'
+#' @param x A fitted [spmixqr] object.
+#' @param which One of `"gate"` (mixing-probability map), `"coef"` (slope-surface
+#'   map), `"class"` (classified map), or `"density"` (component error densities).
+#' @param regime Which regime to map for `"gate"`/`"coef"` (default 2 for gate, 1
+#'   for coef).
+#' @param ... Passed to the underlying plotting call.
+#' @return Invisibly `NULL`.
+#' @export
+plot.spmixqr <- function(x, which = c("gate", "coef", "class", "density"),
+                         regime = NULL, ...) {
+  which <- match.arg(which)
+  point <- !is.null(x$coords) && isTRUE(x$coords$mode == "point")
+  if (which %in% c("gate", "coef", "class") && !point) {
+    message("Mapping is shown for point data; for areal data use the primer's ggplot maps.")
+  }
+  cc <- if (point) x$coords$coords else NULL
+  pal <- function(v) {
+    rg <- range(v, finite = TRUE); s <- (v - rg[1]) / (diff(rg) + 1e-12)
+    grDevices::rgb(s, 0.2, 1 - s)
+  }
+  if (which == "gate") {
+    k <- if (is.null(regime)) min(2L, x$G) else regime
+    v <- x$prior[, k]
+    if (point) plot(cc[, 1], cc[, 2], col = pal(v), pch = 19,
+                    xlab = "coord 1", ylab = "coord 2",
+                    main = sprintf("Gate P(regime %d)", k), ...)
+    else plot(v, type = "h", ylab = "prob", main = sprintf("Gate P(regime %d)", k))
+  } else if (which == "coef") {
+    if (!x$spatial_coef) { message("Flat slopes; nothing to map."); return(invisible(NULL)) }
+    k <- if (is.null(regime)) 1L else regime
+    ss <- slope_surface_matrix(x$coefficients, x$design, x$basis$B, 1L)[, k]
+    if (point) plot(cc[, 1], cc[, 2], col = pal(ss), pch = 19,
+                    xlab = "coord 1", ylab = "coord 2",
+                    main = sprintf("Slope surface, regime %d", k), ...)
+    else plot(ss, type = "h", main = sprintf("Slope surface, regime %d", k))
+  } else if (which == "class") {
+    cl <- apply(x$posterior, 1L, which.max)
+    if (point) plot(cc[, 1], cc[, 2], col = cl + 1L, pch = 19,
+                    xlab = "coord 1", ylab = "coord 2", main = "Classified regimes", ...)
+    else plot(cl, main = "Classified regimes")
+  } else {
+    e <- x$y - x$fitted_q
+    rng <- range(e)
+    plot(stats::density(e[, 1]), xlim = rng, main = "Component error densities",
+         xlab = "residual", col = 2, ...)
+    for (k in seq_len(x$G)[-1]) graphics::lines(stats::density(e[, k]), col = k + 1L)
+    graphics::legend("topright", legend = paste0("regime", seq_len(x$G)),
+                     col = seq_len(x$G) + 1L, lty = 1, bty = "n")
+  }
+  invisible(NULL)
+}
