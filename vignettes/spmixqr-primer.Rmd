@@ -13,7 +13,9 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6.5,
                       fig.height = 4.2, dpi = 96)
-has_gg <- requireNamespace("ggplot2", quietly = TRUE)
+has_gg  <- requireNamespace("ggplot2", quietly = TRUE)
+has_sf  <- requireNamespace("sf", quietly = TRUE)
+has_map <- has_gg && has_sf
 ```
 
 ```{r setup}
@@ -24,10 +26,16 @@ set.seed(1)
 This primer is for a researcher with *areal* spatial data (regions, neighbourhoods,
 census tracts) who wants to know how covariates move the **tails** of an outcome,
 not just its mean, while neighbouring units are spatially dependent. We work the
-Columbus, Ohio neighbourhood-crime dataset from start to finish: building the spatial
-weights, fitting a spatial quantile regression with a conditional-autoregressive (CAR)
-error, reading the coefficients across the distribution, checking whether the spatial
-term absorbs the autocorrelation, and reporting the result.
+Columbus, Ohio neighbourhood-crime dataset from start to finish, in two examples:
+
+* **Example A** — a single-population spatial-error (CAR) quantile regression: build the
+  weights, fit, read the coefficients across the distribution, and absorb the residual
+  spatial autocorrelation.
+* **Example B** — a two-regime **mixture** of quantile regressions: uncover latent
+  neighbourhood crime regimes and map them.
+
+Throughout we start from a **shapefile**, read it as an `sf` map, and put the estimates
+and residuals back on the map as choropleths alongside the usual tables.
 
 ## 1. The question
 
@@ -57,8 +65,10 @@ within each connected component, so the intercept carries the overall level and 
 the mean-zero spatial *deviation*. The quantile fit uses the asymmetric-Laplace
 (check-loss) working likelihood; estimation is a penalised EM in which the CAR precision
 enters as a sparse ridge penalty [@kozumi2011; @leroux2000]. With one regime (`G = 1`,
-used throughout this primer) the model is a single-population spatial-error quantile
-regression; the mixture extension is covered in `vignette("spmixqr-mixtures")`.
+Example A) the model is a single-population spatial-error quantile regression; with
+`G > 1` (Example B) it becomes a mixture of quantile regressions with latent regimes.
+The full mixture and spatially-varying-slope feature set is in
+`vignette("spmixqr-mixtures")`.
 
 ## 3. The data
 
@@ -169,34 +179,109 @@ head(ph)
 range(round(ph$phi, 2))
 ```
 
-## 9. Reading the fit in pictures
+## 9. Reading the fit on the map
 
-A map of the spatial effect shows where crime runs higher or lower than the covariates
-predict. We plot neighbourhood centroids shaded by $\phi$; a choropleth needs the
-polygons, but centroids tell the same story here.
+Estimates and residuals mean more on a map than in a column. We start from the
+neighbourhood **shapefile** (shipped with the package as a GeoPackage), read it as an
+`sf` object, and attach the fit's quantities. The polygons are in the same order as
+`columbus_crime`, so a column bind aligns them.
 
-```{r maps, eval = has_gg, fig.alt = "Map of the CAR spatial effect across Columbus neighbourhoods"}
-library(ggplot2)
-theme_set(theme_minimal(base_size = 11))
-ph$x <- columbus_crime$x; ph$y <- columbus_crime$y
-ggplot(ph, aes(x, y, colour = phi)) +
-  geom_point(size = 4) +
-  scale_colour_gradient2(low = "#2c7bb6", mid = "grey90", high = "#d7191c") +
-  labs(title = "CAR spatial effect (residual crime not explained by income/hoval)",
-       x = "easting", y = "northing", colour = expression(phi))
+```{r sf-read, eval = has_sf, message = FALSE}
+library(sf)
+shp <- system.file("shapes/columbus.gpkg", package = "spmixqr")
+cols <- st_read(shp, quiet = TRUE)               # 49 neighbourhood polygons
+st_crs(cols) <- NA                               # Columbus coords are arbitrary planar units
+cols$crime <- columbus_crime$crime
+cols$phi   <- phi_surface(fit)$phi               # the CAR spatial effect, per region
+cols$resid <- residuals(fit)                     # observed minus fitted median crime
 ```
 
-```{r path-plot, eval = has_gg, fig.alt = "Income coefficient across quantiles"}
+A choropleth of $\phi$ shows where crime runs higher (red) or lower (blue) than income
+and housing value predict, after the spatial smoothing. A second map of the residuals
+shows what the whole model still misses.
+
+```{r map-phi, eval = has_map, fig.alt = "Choropleth of the CAR spatial effect across Columbus"}
+library(ggplot2)
+theme_set(theme_void(base_size = 11))
+ggplot(cols) +
+  geom_sf(aes(fill = phi), colour = "grey40", linewidth = 0.2) +
+  scale_fill_gradient2(low = "#2c7bb6", mid = "grey92", high = "#d7191c") +
+  labs(title = "CAR spatial effect on crime",
+       subtitle = "residual neighbourhood level not explained by income or housing value",
+       fill = expression(phi))
+```
+
+```{r map-resid, eval = has_map, fig.alt = "Choropleth of model residuals across Columbus"}
+ggplot(cols) +
+  geom_sf(aes(fill = resid), colour = "grey40", linewidth = 0.2) +
+  scale_fill_gradient2(low = "#2c7bb6", mid = "grey92", high = "#d7191c") +
+  labs(title = "Median-model residuals", fill = "resid")
+```
+
+The $\phi$ map localises the spillover the Moran's I test flagged: a cluster of
+neighbourhoods whose crime sits above what their income and housing value imply, which
+the CAR term pools toward its neighbours. The income-by-`tau` curve puts the headline
+finding in one picture.
+
+```{r path-plot, eval = has_gg, fig.width = 5, fig.height = 3.5, fig.alt = "Income coefficient across quantiles"}
 ggplot(data.frame(tau = taus, income = inc), aes(tau, income)) +
   geom_line() + geom_point() + geom_hline(yintercept = 0, linetype = 3) +
+  theme_minimal(base_size = 11) +
   labs(title = "Income effect on crime across the distribution",
        x = expression(tau), y = "income coefficient")
 ```
 
-The income-by-`tau` curve is the headline finding in one picture: the slope grows more
-negative as we move up the crime distribution.
+The slope grows more negative as we move up the crime distribution.
 
-## 10. Diagnostics: can you trust it?
+## 10. Example B: a mixture of crime regimes
+
+So far one relationship held for every neighbourhood. A **mixture** (`G = 2`) instead
+lets the data split into latent *regimes* — neighbourhood types with their own
+crime/income relationship — and assigns each area a posterior probability of belonging
+to each. Here we fit two regimes with a constant gate (no spatial term), which keeps
+the example self-contained; a covariate or spatial gate is the next step.
+
+```{r mixfit}
+fit2 <- spmixqr(crime ~ income + hoval, data = columbus_crime, G = 2, tau = 0.5,
+                spatial_gate = FALSE, spatial_coef = FALSE,
+                control = spmixqr_control(nstart = 8L, seed = 1))
+round(coef(fit2), 2)        # one column per regime
+table(regime = predict(fit2, type = "class"))
+```
+
+The two regimes are distinct. One (the smaller group) has a **high baseline** crime
+level and a **steep** income gradient — income near $-2.8$ — so income separates
+neighbourhoods sharply there. The other (the larger group) has a **lower baseline** and
+a **gentler** income gradient (near $-1.4$). The mixture has found that the
+income–crime relationship is not one curve but two.
+
+Mapping the regime each neighbourhood is assigned to shows the split is spatially
+coherent even though the gate used no location information: the high-gradient regime
+concentrates rather than scattering at random.
+
+```{r map-regime, eval = has_map, fig.alt = "Choropleth of mixture regime membership across Columbus"}
+cols$regime <- factor(predict(fit2, type = "class"))
+cols$p2     <- predict(fit2, type = "posterior")[, 2]
+ggplot(cols) +
+  geom_sf(aes(fill = regime), colour = "grey40", linewidth = 0.2) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Assigned crime regime", fill = "regime")
+```
+
+```{r map-resid2, eval = has_map, fig.alt = "Choropleth of mixture-model residuals across Columbus"}
+cols$resid2 <- residuals(fit2)
+ggplot(cols) +
+  geom_sf(aes(fill = resid2), colour = "grey40", linewidth = 0.2) +
+  scale_fill_gradient2(low = "#2c7bb6", mid = "grey92", high = "#d7191c") +
+  labs(title = "Mixture-model residuals", fill = "resid")
+```
+
+The residual map is the reality check: a mixture can fit closely in-sample, so look for
+spatial pattern left in the residuals. With only 49 units two regimes is about as far as
+the data support; for a spatially *driven* gate, or regime-specific spatial-error terms,
+you need more units (and `vignette("spmixqr-mixtures")` covers the gate machinery).
+
+## 11. Diagnostics: can you trust it?
 
 ```{r diag}
 d <- fit$diagnostics
@@ -217,7 +302,7 @@ c(converged = d$converged,
   variance parameters are weakly identified at this size; lean on the bootstrap and avoid
   many regimes.
 
-## 11. Practical guidance and pitfalls
+## 12. Practical guidance and pitfalls
 
 * **Areal CAR fits use `spatial_coef = FALSE`** and pass the region id as `coords`. The
   CAR term carries the spatial level; the slope-surface machinery (`spatial_coef = TRUE`)
@@ -232,7 +317,7 @@ c(converged = d$converged,
 * **Regimes.** `G > 1` gives a mixture of spatial quantile regressions (latent
   neighbourhood types); use it only with enough units.
 
-## 12. How `spmixqr` relates to other tools
+## 13. How `spmixqr` relates to other tools
 
 `quantreg` fits quantile regression with no spatial structure; `spatialreg` and `spdep`
 fit spatial autoregressive *mean* models; `CARBayes` fits CAR models but not a quantile
@@ -241,7 +326,7 @@ since 2021. `spmixqr` provides a maintained spatial-error quantile regression wi
 first-class queen, rook, distance, k-NN, and user-supplied weights, a Moran's-I
 diagnostic, and the mixture extension [@reich2011].
 
-## 13. Reporting and reproducibility
+## 14. Reporting and reproducibility
 
 ```{r report}
 list(tau = fit$tau,

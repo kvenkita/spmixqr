@@ -1,3 +1,15 @@
+# spmixqr 0.2.2
+
+Primer expanded with maps and a mixture example. Documentation only.
+
+* The Columbus shapefile now ships in `inst/shapes/columbus.gpkg`. The primer reads it
+  with `sf::st_read()` and draws **choropleth maps** of the spatial-error surface and the
+  residuals (replacing the earlier centroid scatter), demonstrating the
+  shapefile-to-`sf`-to-map workflow.
+* A second worked example fits a **two-regime mixture** (`G = 2`) of quantile
+  regressions on Columbus crime, maps the assigned regimes and residuals, and reports
+  the per-regime coefficient table.
+
 # spmixqr 0.2.1
 
 Documentation refocus: the spatial-dependence features (CAR spatial-error term,
