@@ -133,6 +133,69 @@ sprintf("%d of %d sites are credible (zinc reliably above/below expectation)",
         sum(pm$credible), nrow(pm))
 ```
 
+## NNGP: a weights-matrix-free spatial error for point data
+
+For point data, a contiguity/k-NN `W` is an ad hoc discretisation of a continuous
+surface. A **nearest-neighbour Gaussian process** (NNGP; Datta, Banerjee, Finley &
+Gelfand 2016) instead places a continuous Matern field on the points and represents it by
+a *sparse* precision `Q = (I - B)' D^{-1} (I - B)` built from each point's `m` nearest
+neighbours. `spq_weights(type = "nngp")` returns that precision; it plugs into the same
+penalised spatial-error M-step as the CAR term — but it is `W`-free, scalable (the
+precision is sparse), and continuous-domain. Because the precision is proper (full rank),
+`phi` is fit unconstrained (no sum-to-zero).
+
+```{r nngp}
+cc <- as.matrix(meuse_zinc[, c("x", "y")])
+Wn <- spq_weights(cc, type = "nngp", m = 10, nu = 0.5)   # 10-neighbour exponential field
+Wn
+fit_n <- spmixqr(log(zinc) ~ dist, meuse_zinc, coords = cc, G = 1, tau = 0.5,
+                 spatial_error = TRUE, spatial_coef = FALSE, spatial_W = Wn,
+                 variance = "none", control = spmixqr_control(nstart = 1L, seed = 1))
+coef(fit_n)
+```
+
+The Matern `range` and smoothness `nu` are weakly identified from one realisation (Zhang
+2004), so they are fixed (or chosen by BIC over a few `spq_weights(range = ...)` objects),
+exactly as the roughness penalty is. For point GPs use `variance = "boot"`: the
+classification-conditional sandwich forms a dense per-unit covariance.
+
+## Spatial+: guarding against spatial confounding
+
+Adding *any* spatial random effect — CAR or NNGP — can bias the covariate effects when a
+covariate itself varies smoothly over space: the spatial term and the covariate compete
+for the same variation, attenuating (or even flipping) the slope (Hodges & Reich 2010).
+The sound remedy is **Spatial+** (Dupont, Wood & Augustin 2022): residualise each
+covariate against a spatial smooth and fit on the residuals, so the covariate keeps only
+its *non-spatial* variation. It is loss-agnostic, so it composes with the quantile EM. (We
+do **not** offer restricted spatial regression, which the recent literature has refuted as
+a general fix.)
+
+`sim_spatial_confound()` makes the problem concrete: a covariate `x` confounded with a
+spatial field that also drives `y`, with a known true slope of 1.
+
+```{r splus}
+d <- sim_spatial_confound(n = 400, beta = 1.0, confound = 0.9, seed = 11)
+Wn2 <- spq_weights(d$coords, type = "nngp", m = 10)
+ctl <- spmixqr_control(nstart = 1L, seed = 1)
+b <- function(f) round(coef(f)["x", 1], 3)
+f_naive <- spmixqr(y ~ x, d$data, coords = d$coords, G = 1, tau = 0.5,
+                   spatial_error = FALSE, spatial_coef = FALSE, variance = "none", control = ctl)
+f_nngp  <- spmixqr(y ~ x, d$data, coords = d$coords, G = 1, tau = 0.5, spatial_error = TRUE,
+                   spatial_coef = FALSE, spatial_W = Wn2, variance = "none", control = ctl)
+f_splus <- spmixqr(y ~ x, d$data, coords = d$coords, G = 1, tau = 0.5, spatial_error = TRUE,
+                   spatial_coef = FALSE, spatial_W = Wn2, spatial_plus = TRUE,
+                   variance = "none", control = ctl)
+c(truth = 1, naive = b(f_naive), nngp_only = b(f_nngp), spatial_plus = b(f_splus))
+```
+
+The naive slope is badly inflated; the NNGP term absorbs part of the confounding but, being
+penalised, leaves a residual bias; **Spatial+** removes most of what remains. The catch
+(Frisch–Waugh–Lovell): Spatial+ deconfounds only to the extent its residualisation smooth
+*out-resolves* the penalised spatial term — residualising on the very same basis is a
+no-op. The residualisation is mean-based, so it cleanly deconfounds the quantile slope for
+symmetric error; the reported slopes are the effect of the non-spatial part of each
+covariate (see `summary(f_splus)`).
+
 ## Recovery on a known DGP
 
 `sim_spmixqr(spatial_error = TRUE)` generates lattice data with a known CAR effect, so

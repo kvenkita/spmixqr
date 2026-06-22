@@ -32,6 +32,15 @@
 #' @param car_alpha Proper-CAR spatial-dependence strength in `[0, 1]` (default
 #'   `0.95`). Fixed by default (weakly identified; disclosed in `summary()`), not
 #'   selected by the check loss.
+#' @param spatial_plus Logical; apply the **Spatial+** confounding safeguard (Dupont,
+#'   Wood & Augustin 2022): residualise each covariate against a spatial smooth and fit
+#'   on the residuals, so a smoothly-spatial covariate no longer competes with the
+#'   spatial random effect. The reported slopes are then the effect of the *non-spatial*
+#'   part of each covariate. Deconfounds only to the extent the residualisation smooth
+#'   out-resolves the (penalised) spatial term (Frisch--Waugh--Lovell); the default
+#'   smooth is made richer for this reason. Composes with `spatial_error` (CAR or NNGP).
+#' @param spatial_plus_k Basis dimension for the Spatial+ covariate smooth (`NULL` uses
+#'   a generous default richer than the spatial-error resolution).
 #' @param method Component density: `"ald"` (asymmetric Laplace) or `"kde"` (Wu & Yao
 #'   constrained kernel density).
 #' @param lambda_gate,lambda_coef,lambda_error Roughness / CAR penalties for the gate,
@@ -66,6 +75,7 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
                     gating = ~1, spatial_gate = TRUE, spatial_coef = TRUE,
                     spatial_error = FALSE, spatial_W = NULL,
                     car = c("proper", "icar"), car_alpha = 0.95,
+                    spatial_plus = FALSE, spatial_plus_k = NULL,
                     method = c("ald", "kde"),
                     lambda_gate = NULL, lambda_coef = NULL, lambda_error = NULL,
                     variance = c("sandwich", "boot", "none"),
@@ -110,10 +120,24 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
 
   ## ---- spatial basis (built once, shared by gate and slope surfaces) ----
   need_basis <- spatial_gate || spatial_coef
-  need_geo <- need_basis || isTRUE(spatial_error)
+  need_geo <- need_basis || isTRUE(spatial_error) || isTRUE(spatial_plus)
   geo <- if (need_geo) resolve_coords(coords, areal, data, n,
-                                      spatial_error = isTRUE(spatial_error),
+                                      spatial_error = isTRUE(spatial_error) || isTRUE(spatial_plus),
                                       spatial_W = spatial_W) else NULL
+
+  ## ---- Spatial+ confounding safeguard: residualise covariates against a spatial smooth ----
+  sp_plus <- NULL
+  if (isTRUE(spatial_plus)) {
+    if (length(slope_idx) == 0L)
+      stop("`spatial_plus = TRUE` needs at least one non-intercept covariate.", call. = FALSE)
+    if (isTRUE(spatial_coef))
+      warning("spatial_plus with spatial_coef = TRUE: the slope SURFACE then multiplies the ",
+              "residualised (deconfounded) covariate, so its estimand also changes. v1 ",
+              "applies Spatial+ to the constant-slope interpretation; read surfaces with care.",
+              call. = FALSE)
+    sp_plus <- spatial_plus_residualize(X, slope_idx, geo, k = spatial_plus_k)
+    X <- sp_plus$X
+  }
   if (need_basis && is.null(basis)) {
     bt <- if (!is.null(areal)) "mrf" else control$basis_type
     locarg <- if (geo$mode == "areal") geo$region else geo$coords
@@ -197,7 +221,8 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
                       iters = best$iters, gate_cond = best$gate_cond,
                       occupancy = occ, class_entropy = if (G > 1L) ent else 0,
                       label_stability = lab_stab, spatial_edf = edf$spatial,
-                      smoothing_h = best$h_used)
+                      smoothing_h = best$h_used,
+                      spatial_plus = if (!is.null(sp_plus)) sp_plus$spatialR2 else NULL)
   ## residual Moran's I (after the CAR term) for the summary block
   if (isTRUE(spatial_error) && !is.null(car_obj)) {
     diagnostics$moran <- tryCatch({
@@ -220,11 +245,21 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
     gating = gating, tau = tau, G = G, method = method,
     spatial_gate = spatial_gate, spatial_coef = spatial_coef,
     spatial_error = isTRUE(spatial_error), car = car_slot,
+    spatial_plus = isTRUE(spatial_plus),
+    spatial_plus_smooths = if (!is.null(sp_plus)) sp_plus$smooths else NULL,
     coords = if (need_geo) geo else NULL, X = X, W = W, y = y,
     h = best$h_used),
     class = "spmixqr")
 
   ## ---- inference ----
+  ## NNGP phi is unconstrained (L' = n units), so the classification-conditional sandwich
+  ## densifies to O(n^2)/O(n^3); the spatial-block bootstrap is the scalable, recommended
+  ## path for point-GP fits (synthesis item 7).
+  if (variance == "sandwich" && !is.null(car_slot) && identical(car_slot$kind, "nngp") &&
+      nrow(car_slot$phi) > 300L)
+    warning("NNGP spatial-error fit with variance = 'sandwich' forms a dense ", nrow(car_slot$phi),
+            "-unit covariance (O(n^2) memory). Use variance = 'boot' for point-GP inference.",
+            call. = FALSE)
   if (variance == "sandwich") obj$vcov <- sandwich_vcov(obj)
   else if (variance == "boot") obj$vcov <- bootstrap_vcov(obj, data)
   obj
@@ -241,6 +276,9 @@ resolve_car <- function(spatial_W, geo, car, car_alpha, n) {
          call. = FALSE)
 
   ## ---- build / validate the weights object first (it defines the unit ordering) ----
+  if (inherits(spatial_W, "spq_weights") && identical(spatial_W$type, "nngp") &&
+      geo$mode == "areal")
+    stop("type='nngp' weights are for point data; use coords (not areal).", call. = FALSE)
   if (inherits(spatial_W, "spq_weights")) {
     spqw <- spatial_W
   } else if (!is.null(spatial_W)) {
@@ -283,13 +321,16 @@ resolve_car <- function(spatial_W, geo, car, car_alpha, n) {
     rownames(unit_coords) <- NULL
   }
 
-  Q <- make_car_precision(spqw, alpha = car_alpha, car = car)
+  is_nngp <- identical(spqw$type, "nngp")
+  ## NNGP: proper full-rank precision -> use Q directly, single 'component', NO
+  ## sum-to-zero (the proper precision + intercept identify phi; Datta et al. 2016).
+  Q <- if (is_nngp) spqw$Q else make_car_precision(spqw, alpha = car_alpha, car = car)
   R <- incidence_matrix(unit_idx, L)
-  membership <- components_from_W(spqw$W)$membership
-  ab <- absorb_car_constraint(R, Q, membership)
+  membership <- if (is_nngp) rep(1L, L) else components_from_W(spqw$W)$membership
+  ab <- absorb_car_constraint(R, Q, membership, constrain = !is_nngp)
   list(spqw = spqw, Q = Q, R = R, Rt = ab$Rt, Qt = ab$Qt, Tmat = ab$Tmat,
        Lp = ab$Lp, unit_idx = unit_idx, ids = ids, membership = membership,
-       mode = geo$mode,
+       mode = geo$mode, kind = if (is_nngp) "nngp" else "car",
        unit_coords = if (geo$mode == "point") unit_coords else NULL)
 }
 
@@ -305,6 +346,7 @@ build_car_slot <- function(beta, car_block, car_obj, car, car_alpha, lam_phi) {
   rownames(phi) <- car_obj$ids
   colnames(phi) <- paste0("regime", seq_len(G))
   list(phi = phi, W = car_obj$spqw, Q = car_obj$Q, alpha = car_alpha, car = car,
+       kind = if (!is.null(car_obj$kind)) car_obj$kind else "car",
        lambda = lam_phi, Tmat = car_obj$Tmat, car_block = car_block,
        units = list(ids = car_obj$ids, unit_idx = car_obj$unit_idx,
                     membership = car_obj$membership, mode = car_obj$mode,

@@ -145,3 +145,38 @@ rald <- function(n, tau, sigma) {
   ifelse(u < tau, sigma / (1 - tau) * log(u / tau),
          -sigma / tau * log((1 - u) / (1 - tau)))
 }
+
+#' Simulate point data with spatial confounding (for Spatial+ / NNGP demos)
+#'
+#' Generates point-referenced data in which a covariate is correlated with a smooth
+#' spatial field that also drives the outcome -- the spatial-confounding setting of
+#' Dupont, Wood & Augustin (2022). A high-frequency field `f(s)` is used so the
+#' covariate's spatial signal out-resolves a penalised spatial-error term (the
+#' resolution gap that makes Spatial+ effective; Frisch--Waugh--Lovell). With
+#' `confound = 0` it is a negative control (no confounding). The error is symmetric, so
+#' the true `tau`-quantile slope equals `beta` at every `tau`.
+#'
+#' @param n Number of points.
+#' @param beta True covariate slope (recovered by a deconfounded estimator).
+#' @param confound Strength of covariate--space correlation (`0` = negative control).
+#' @param amp Amplitude of the spatial field in the outcome.
+#' @param freq Spatial frequency of the field (higher = finer; default 6).
+#' @param sd Error scale.
+#' @param seed Optional seed.
+#' @return A list with `data` (`y`, `x`), `coords` (`n x 2`), and `truth` (`beta`, the
+#'   field `f`, `confound`).
+#' @references Dupont, Wood & Augustin (2022, Biometrics).
+#' @examples
+#' d <- sim_spatial_confound(n = 200, seed = 1)
+#' str(d$truth)
+#' @export
+sim_spatial_confound <- function(n = 400L, beta = 1.0, confound = 0.9, amp = 1.2,
+                                 freq = 6, sd = 0.5, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  s <- matrix(stats::runif(2 * n), n, 2)
+  f <- sin(freq * s[, 1]) + cos(freq * s[, 2])           # high-frequency spatial field
+  x <- confound * f + stats::rnorm(n, 0, 0.6)            # covariate confounded with space
+  y <- 1 + beta * x + amp * f + stats::rnorm(n, 0, sd)   # f competes with x for the level
+  list(data = data.frame(y = y, x = x), coords = s,
+       truth = list(beta = beta, f = f, confound = confound))
+}

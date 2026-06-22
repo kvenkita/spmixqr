@@ -18,6 +18,8 @@ spmixqr(
   spatial_W = NULL,
   car = c("proper", "icar"),
   car_alpha = 0.95,
+  spatial_plus = FALSE,
+  spatial_plus_k = NULL,
   method = c("ald", "kde"),
   lambda_gate = NULL,
   lambda_coef = NULL,
@@ -66,6 +68,17 @@ default) or \code{"icar"} (intrinsic \code{D-W} with a sum-to-zero constraint).}
 \item{car_alpha}{Proper-CAR spatial-dependence strength in \verb{[0, 1]} (default
 \code{0.95}). Fixed by default (weakly identified; disclosed in \code{summary()}), not
 selected by the check loss.}
+
+\item{spatial_plus}{Logical; apply the \strong{Spatial+} confounding safeguard (Dupont,
+Wood & Augustin 2022): residualise each covariate against a spatial smooth and fit
+on the residuals, so a smoothly-spatial covariate no longer competes with the
+spatial random effect. The reported slopes are then the effect of the \emph{non-spatial}
+part of each covariate. Deconfounds only to the extent the residualisation smooth
+out-resolves the (penalised) spatial term (Frisch--Waugh--Lovell); the default
+smooth is made richer for this reason. Composes with \code{spatial_error} (CAR or NNGP).}
+
+\item{spatial_plus_k}{Basis dimension for the Spatial+ covariate smooth (\code{NULL} uses
+a generous default richer than the spatial-error resolution).}
 
 \item{method}{Component density: \code{"ald"} (asymmetric Laplace) or \code{"kde"} (Wu & Yao
 constrained kernel density).}

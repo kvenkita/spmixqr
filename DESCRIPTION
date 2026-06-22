@@ -1,7 +1,7 @@
 Package: spmixqr
 Type: Package
 Title: Spatial Quantile Regression with Autocorrelation and Mixtures
-Version: 0.2.5
+Version: 0.3.0
 Authors@R: person(c("Kailas", "Venkitasubramanian"), email = "kailasv@gmail.com",
     role = c("aut", "cre"))
 Description: Quantile regression for spatial data that accounts for spatial
@@ -18,7 +18,12 @@ Description: Quantile regression for spatial data that accounts for spatial
     algorithm carries the CAR precision as a sparse penalty and uses 'mgcv'
     thin-plate, Gaussian-process, or Markov-random-field smooths for the spatial gate
     and slope surfaces. Inference is classification-aware: a fast sandwich and a
-    spatial-block bootstrap (recommended for reporting).
+    spatial-block bootstrap (recommended for reporting). For point-referenced data a
+    scalable nearest-neighbour Gaussian-process Matern precision (Datta, Banerjee,
+    Finley and Gelfand (2016) <doi:10.1080/01621459.2015.1044091>) is available as a
+    weights-matrix-free alternative to the contiguity CAR. A 'Spatial+' safeguard
+    (Dupont, Wood and Augustin (2022) <doi:10.1111/biom.13656>) residualises covariates
+    against a spatial smooth to guard against spatial-confounding bias.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.1)

@@ -31,8 +31,10 @@ reference:
   - spmixqr
   - spmixqr_control
   - spmixqr_select
-- title: Spatial weights and autocorrelation (CAR error)
-  desc: Build the weights matrix and diagnose residual spatial autocorrelation.
+- title: Spatial weights and autocorrelation (CAR / NNGP error)
+  desc: >
+    Build the weights matrix or an NNGP Matern precision (point data),
+    diagnose residual spatial autocorrelation, and read the spatial effect.
   contents:
   - spq_weights
   - moran_resid
@@ -47,6 +49,7 @@ reference:
 - title: Simulation and data
   contents:
   - sim_spmixqr
+  - sim_spatial_confound
   - columbus_crime
   - columbus_W
   - lucas_house

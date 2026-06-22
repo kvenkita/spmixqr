@@ -4,7 +4,7 @@
 \alias{absorb_car_constraint}
 \title{Constraint-absorbed incidence and precision for the CAR block.}
 \usage{
-absorb_car_constraint(R, Q, membership, eps = 1e-06)
+absorb_car_constraint(R, Q, membership, eps = 1e-06, constrain = TRUE)
 }
 \arguments{
 \item{R}{Full unit-incidence matrix \verb{n x L} (\code{R[i, s(i)] = 1}), sparse.}
@@ -14,6 +14,10 @@ absorb_car_constraint(R, Q, membership, eps = 1e-06)
 \item{membership}{Length-L connected-component labels (from \code{\link[=components_from_W]{components_from_W()}}).}
 
 \item{eps}{Ridge added to the reduced precision.}
+
+\item{constrain}{Apply the per-component sum-to-zero (default \code{TRUE}, for the
+rank-deficient ICAR/CAR precision). \code{FALSE} for a proper full-rank precision (NNGP):
+\code{phi} is fit unconstrained and \code{Tmat} is the identity.}
 }
 \value{
 A list with \code{Rt} (constraint-absorbed incidence, sparse \verb{n x L'}), \code{Qt}

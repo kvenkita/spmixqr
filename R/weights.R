@@ -21,18 +21,29 @@
 #'   `type = "supplied"`: a square nonnegative matrix (`Matrix` or base).
 #' @param type Weights construction: `"queen"`/`"rook"` (polygon contiguity),
 #'   `"distance"` (distance band `[d1, d2]`), `"knn"` (k nearest neighbours,
-#'   symmetrised), or `"supplied"` (validate a user matrix).
+#'   symmetrised), `"supplied"` (validate a user matrix), or `"nngp"` (a sparse
+#'   nearest-neighbour Gaussian-process Matern *precision* for point data: a scalable,
+#'   `W`-free continuous-domain spatial-error alternative to CAR; Datta et al. 2016).
 #' @param d1,d2 Lower / upper distance band (required for `"distance"`).
 #' @param k Number of nearest neighbours (for `"knn"`).
 #' @param style \pkg{spdep} weighting style; `"B"` (symmetric binary, default) is
 #'   required for a valid GMRF precision. `"W"` (row-standardised) is asymmetric and
 #'   triggers a warning (symmetrised before use).
 #' @param ids Optional unit identifiers (row/column names of `W`).
+#' @param m For `type = "nngp"`: number of nearest earlier-neighbours (default 10).
+#' @param range For `type = "nngp"`: Matern range in raw coordinate units (`NULL` uses
+#'   ~0.1 of the domain extent). Weakly identified from one realisation, so it is fixed
+#'   or selected (like the smoothing penalty), not estimated (Zhang 2004).
+#' @param nu For `type = "nngp"`: Matern smoothness, `0.5` (exponential) or `1.5`.
 #' @param ... Currently unused.
 #' @return An object of class `spq_weights`: a list with `W` (sparse symmetric
 #'   `dgCMatrix`), `D` (sparse diagonal degree matrix), `ids`, `style`, `type`,
 #'   `n_comp` (number of connected components, via [spdep::n.comp.nb()]), and
-#'   `n_island` (number of zero-degree units).
+#'   `n_island` (number of zero-degree units). For `type = "nngp"` it additionally
+#'   carries `Q` (the sparse Matern precision, used directly by the spatial-error
+#'   M-step), `kind = "nngp"`, `m`, `range`, `nu`, `ordering`, and `coords`; its `W` is
+#'   the symmetrised neighbour graph (used only for diagnostics and the spatial block
+#'   bootstrap).
 #' @references Leroux et al. (2000); \pkg{spdep} (Bivand et al.).
 #' @examples
 #' ## supplied matrix (no spdep input needed)
@@ -41,14 +52,34 @@
 #' w <- spq_weights(Wm, type = "supplied")
 #' w
 #' @export
-spq_weights <- function(x, type = c("queen", "rook", "distance", "knn", "supplied"),
-                        d1 = 0, d2 = NULL, k = 5L, style = "B", ids = NULL, ...) {
+spq_weights <- function(x, type = c("queen", "rook", "distance", "knn", "supplied", "nngp"),
+                        d1 = 0, d2 = NULL, k = 5L, style = "B", ids = NULL,
+                        m = 10L, range = NULL, nu = 0.5, ...) {
   type <- match.arg(type)
   if (!requireNamespace("Matrix", quietly = TRUE))
     stop("Package 'Matrix' is required for spq_weights().", call. = FALSE)
   needs_spdep <- type %in% c("queen", "rook", "distance", "knn")
   if (needs_spdep && !requireNamespace("spdep", quietly = TRUE))
     stop("Package 'spdep' is required for type='", type, "'.", call. = FALSE)
+
+  ## ---- NNGP: sparse Matern Vecchia precision for point data (early return) ----
+  if (type == "nngp") {
+    cc <- as.matrix(x)
+    if (ncol(cc) != 2L) stop("type='nngp' needs a two-column coordinate matrix.", call. = FALSE)
+    key <- apply(cc, 1L, function(z) paste(z, collapse = "_"))
+    keep <- !duplicated(key)                       # merge duplicate coords to shared units
+    ucc <- cc[keep, , drop = FALSE]                # distinct locations, first-occurrence order
+    uid <- if (!is.null(ids)) as.character(ids)[keep] else key[keep]
+    np <- nngp_precision(ucc, m = m, range = range, nu = nu)
+    Q <- np$Q; W <- np$Wadj
+    dimnames(Q) <- list(uid, uid); dimnames(W) <- list(uid, uid)
+    return(structure(list(
+      W = W, D = Matrix::Diagonal(x = as.numeric(Matrix::rowSums(W))),
+      Q = Q, ids = uid, style = "nngp", type = "nngp", kind = "nngp",
+      m = np$m, range = np$range, nu = np$nu, ordering = np$ordering,
+      coords = ucc, n_comp = 1L, n_island = 0L),
+      class = "spq_weights"))
+  }
 
   nb <- NULL
   to_W <- function(nb, ids) {
@@ -190,12 +221,24 @@ make_car_precision <- function(spqw, alpha = 0.95, car = c("proper", "icar"),
 #' @param Q Full `L x L` CAR precision from [make_car_precision()].
 #' @param membership Length-L connected-component labels (from [components_from_W()]).
 #' @param eps Ridge added to the reduced precision.
+#' @param constrain Apply the per-component sum-to-zero (default `TRUE`, for the
+#'   rank-deficient ICAR/CAR precision). `FALSE` for a proper full-rank precision (NNGP):
+#'   `phi` is fit unconstrained and `Tmat` is the identity.
 #' @return A list with `Rt` (constraint-absorbed incidence, sparse `n x L'`), `Qt`
 #'   (reduced precision, sparse `L' x L'`), `Tmat` (`L x L'` recovery basis), and
 #'   `Lp` (`L'`).
 #' @keywords internal
-absorb_car_constraint <- function(R, Q, membership, eps = 1e-6) {
+absorb_car_constraint <- function(R, Q, membership, eps = 1e-6, constrain = TRUE) {
   L <- ncol(R)
+  ## Proper full-rank precision (e.g. NNGP): no sum-to-zero. Fit phi unconstrained;
+  ## the proper precision + intercept identify it (Datta et al. 2016). Tmat = identity.
+  if (!isTRUE(constrain)) {
+    Tmat <- methods::as(Matrix::Diagonal(L), "CsparseMatrix")
+    Qt <- Matrix::forceSymmetric(Q) + eps * Matrix::Diagonal(L)
+    return(list(Rt = methods::as(R, "CsparseMatrix"),
+                Qt = methods::as(Qt, "CsparseMatrix"),
+                Tmat = Tmat, Lp = L))
+  }
   comps <- sort(unique(membership))
   ## Build the L x L' null-space basis Tmat of the per-component sum-to-zero
   ## constraint. Within each component of size m, the sum-to-zero contrast is the
@@ -256,6 +299,13 @@ incidence_matrix <- function(unit_idx, L) {
 #' @export
 print.spq_weights <- function(x, ...) {
   cat("<spq_weights>\n")
+  if (identical(x$type, "nngp")) {
+    cat(sprintf("  type = nngp (NNGP Matern precision)   nu = %s   range = %.4g\n",
+                as.character(x$nu), x$range))
+    cat(sprintf("  units L = %d   neighbours m = %d   precision nnz = %d\n",
+                nrow(x$Q), x$m, length(x$Q@x)))
+    return(invisible(x))
+  }
   cat(sprintf("  type = %s   style = %s\n", x$type, x$style))
   cat(sprintf("  units L = %d   nonzero links = %d   connected components = %s\n",
               nrow(x$W), length(x$W@x), as.character(x$n_comp)))

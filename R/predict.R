@@ -52,6 +52,17 @@ predict_designs <- function(object, newdata, newcoords) {
   tt <- stats::delete.response(object$terms)
   X <- stats::model.matrix(tt, stats::model.frame(tt, newdata))
   W <- stats::model.matrix(object$gating, stats::model.frame(object$gating, newdata))
+  ## Spatial+: residualise new covariates with the stored smooths (else predictions
+  ## silently mix raw covariates with deconfounded slopes -> wrong quantiles).
+  if (isTRUE(object$spatial_plus) && length(object$spatial_plus_smooths)) {
+    if (is.null(newcoords))
+      stop("Spatial+ model: supply `newcoords` so covariates can be residualised.",
+           call. = FALSE)
+    geo_new <- list(mode = object$coords$mode,
+                    coords = if (object$coords$mode == "point") newcoords else NULL,
+                    region = if (object$coords$mode == "areal") newcoords else NULL)
+    X <- spatial_plus_apply(X, object$spatial_plus_smooths, geo_new)
+  }
   B <- NULL
   if (object$spatial_gate || object$spatial_coef) {
     if (is.null(newcoords)) stop("Spatial model: supply `newcoords` for prediction.")

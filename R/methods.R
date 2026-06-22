@@ -80,17 +80,20 @@ summary.spmixqr <- function(object, ...) {
       moran_after <- ms$statistic; moran_p <- ms$p_value
     }
     var_share <- apply(object$car$phi, 2L, stats::var)
+    kind <- if (!is.null(object$car$kind)) object$car$kind else "car"
     car_block <- list(lambda = object$car$lambda, alpha = object$car$alpha,
                       car = object$car$car, n_units = nrow(object$car$phi),
                       n_comp = object$car$W$n_comp, var_share = var_share,
-                      moran = moran_after, moran_p = moran_p)
+                      moran = moran_after, moran_p = moran_p, kind = kind,
+                      m = object$car$W$m, range = object$car$W$range, nu = object$car$W$nu)
   }
   out <- list(call = object$call, G = object$G, tau = object$tau,
               method = object$method, comp = comp_tab, gate = gate_tab,
               loglik = object$loglik, edf = object$edf, aic = object$aic,
               bic = object$bic, se_method = object$se_method,
               diagnostics = object$diagnostics, spatial_gate = object$spatial_gate,
-              spatial_coef = object$spatial_coef,
+              spatial_coef = object$spatial_coef, spatial_plus = isTRUE(object$spatial_plus),
+              spatial_plus_r2 = object$diagnostics$spatial_plus,
               spatial_error = isTRUE(object$spatial_error), car = car_block)
   class(out) <- "summary.spmixqr"
   out
@@ -113,17 +116,37 @@ print.summary.spmixqr <- function(x, ...) {
     }
     cat("\n")
   }
+  if (isTRUE(x$spatial_plus) && !is.null(x$spatial_plus_r2)) {
+    cat("-- Spatial+ confounding safeguard (Dupont, Wood & Augustin 2022) --\n")
+    cat("   covariates residualised against a spatial smooth; slopes below are the effect of the\n")
+    cat("   NON-spatial part of each covariate. Residualisation is mean (least-squares) based, so\n")
+    cat("   it deconfounds the tau-slope cleanly for symmetric error (validated by simulation).\n")
+    cat("   Spatial R^2 removed:\n")
+    r2 <- x$spatial_plus_r2
+    for (i in seq_len(nrow(r2)))
+      cat(sprintf("     %-16s %.3f\n", r2$variable[i], r2$spatialR2[i]))
+    cat("\n")
+  }
   if (!is.null(x$car)) {
     cb <- x$car
-    cat("-- Spatial CAR error --\n")
-    cat(sprintf("   units = %d (%s connected component(s));  %s CAR, alpha = %.2f (fixed),  lambda_phi = %.4g\n",
-                cb$n_units, as.character(cb$n_comp), cb$car, cb$alpha, cb$lambda))
+    if (identical(cb$kind, "nngp")) {
+      cat("-- Spatial NNGP error (Datta et al. 2016) --\n")
+      cat(sprintf("   units = %d;  Matern nu = %s, range = %.4g (raw units), m = %d neighbours,  lambda_phi = %.4g\n",
+                  cb$n_units, as.character(cb$nu), cb$range, cb$m, cb$lambda))
+    } else {
+      cat("-- Spatial CAR error --\n")
+      cat(sprintf("   units = %d (%s connected component(s));  %s CAR, alpha = %.2f (fixed),  lambda_phi = %.4g\n",
+                  cb$n_units, as.character(cb$n_comp), cb$car, cb$alpha, cb$lambda))
+    }
     cat(sprintf("   per-regime spatial variance: %s\n",
                 paste(sprintf("%.3g", cb$var_share), collapse = ", ")))
     if (is.finite(cb$moran))
       cat(sprintf("   residual Moran's I = %.4f (perm p = %.3f)\n", cb$moran, cb$moran_p))
     cat("   note: lambda_phi is selectable by BIC via spmixqr_select() (this fit holds it fixed);\n")
-    cat("         alpha is weakly identified (fixed, not estimated).\n\n")
+    if (identical(cb$kind, "nngp"))
+      cat("         range/nu are weakly identified (fixed/selected, not estimated; Zhang 2004).\n\n")
+    else
+      cat("         alpha is weakly identified (fixed, not estimated).\n\n")
   }
   cat(sprintf("SE method: %s", x$se_method))
   if (identical(x$se_method, "sandwich"))

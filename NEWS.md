@@ -1,3 +1,29 @@
+# spmixqr 0.3.0
+
+Two spatial-dependence additions alongside the existing CAR-phi, grounded in a verified
+review of recent (2019-2026) advances. CAR-phi is kept (adequate for areal data; its
+fixed effects are relatively robust to weights-matrix misspecification).
+
+* **NNGP point-data spatial-error engine.** `spq_weights(type = "nngp", m, range, nu)`
+  builds a sparse nearest-neighbour Gaussian-process Matern precision (Datta et al. 2016)
+  for point/distance data -- a scalable, weights-matrix-free, continuous-domain
+  alternative to the contiguity CAR. It plugs into the same penalised spatial-error
+  M-step; because the precision is proper/full-rank, `phi` is fit unconstrained (no
+  sum-to-zero). `summary()`, `phi_surface()`, maps, the residual-Moran diagnostic, and
+  the spatial-block bootstrap all work for NNGP fits.
+* **Spatial+ confounding safeguard.** `spmixqr(spatial_plus = TRUE)` residualises each
+  covariate against a spatial smooth (Dupont, Wood & Augustin 2022) so a smoothly-spatial
+  covariate no longer competes with the spatial random effect; the reported slopes are
+  the effect of the non-spatial part of each covariate. Loss-agnostic, so it composes
+  with the quantile EM and the CAR or NNGP error. It deconfounds to the extent the
+  residualisation smooth out-resolves the penalised spatial term (the default smooth is
+  made rich for this reason). Restricted spatial regression (RSR) is deliberately not
+  offered (refuted as a general fix).
+* `sim_spatial_confound()` generates point data with (or without) spatial confounding for
+  demonstrations and validation.
+* `spmixqr_select()` threads `spatial_plus` (residualisation refit per CV fold, no
+  leakage).
+
 # spmixqr 0.2.5
 
 * Primer: dropped the "Reporting and reproducibility" section.

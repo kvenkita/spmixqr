@@ -11,6 +11,10 @@
 #'   [spmixqr()]. When `spatial_error = TRUE` the `lambda_error_grid` is searched
 #'   (BIC, with the CAR-effective-df term) and `spatial_gate` is forced off (the
 #'   guardrail); `car_alpha` is fixed (not selected by the check loss).
+#' @param spatial_plus,spatial_plus_k Spatial+ confounding-safeguard settings passed to
+#'   [spmixqr()] (the residualisation is refit within each CV training fold, so there is
+#'   no leakage). NNGP `range` selection is not searched here (use `criterion = "bic"`
+#'   comparing manually-built NNGP weights objects).
 #' @param G_grid Candidate regime counts.
 #' @param lambda_gate_grid,lambda_coef_grid,lambda_error_grid Candidate penalties.
 #' @param criterion `"bic"` or `"cv"`.
@@ -22,6 +26,7 @@ spmixqr_select <- function(formula, data, coords = NULL, areal = NULL, tau = 0.5
                            gating = ~1, spatial_gate = TRUE, spatial_coef = TRUE,
                            spatial_error = FALSE, spatial_W = NULL,
                            car = c("proper", "icar"), car_alpha = 0.95,
+                           spatial_plus = FALSE, spatial_plus_k = NULL,
                            method = c("ald", "kde"), G_grid = 2:3,
                            lambda_gate_grid = c(0.1, 1, 10),
                            lambda_coef_grid = c(0.1, 1, 10),
@@ -30,6 +35,9 @@ spmixqr_select <- function(formula, data, coords = NULL, areal = NULL, tau = 0.5
                            control = spmixqr_control()) {
   method <- match.arg(method); criterion <- match.arg(criterion); car <- match.arg(car)
   if (method == "kde") criterion <- "cv"
+  if (criterion == "cv" && inherits(spatial_W, "spq_weights"))
+    stop("criterion='cv' cannot subset a prebuilt `spatial_W` per fold; use ",
+         "criterion='bic' with a prebuilt (e.g. NNGP) weights object.", call. = FALSE)
   ## under the guardrail spatial_error forces spatial_gate off (pass FALSE explicitly
   ## so the internal re-calls never trip the guardrail or re-message B times).
   sg <- if (isTRUE(spatial_error)) FALSE else spatial_gate
@@ -45,6 +53,7 @@ spmixqr_select <- function(formula, data, coords = NULL, areal = NULL, tau = 0.5
             spatial_gate = sg, spatial_coef = spatial_coef,
             spatial_error = spatial_error, spatial_W = spatial_W,
             car = car, car_alpha = car_alpha,
+            spatial_plus = spatial_plus, spatial_plus_k = spatial_plus_k,
             method = method, lambda_gate = lg, lambda_coef = lc,
             lambda_error = if (isTRUE(spatial_error)) le else NULL,
             variance = "none", control = control)

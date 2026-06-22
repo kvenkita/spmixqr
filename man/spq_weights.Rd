@@ -6,12 +6,15 @@
 \usage{
 spq_weights(
   x,
-  type = c("queen", "rook", "distance", "knn", "supplied"),
+  type = c("queen", "rook", "distance", "knn", "supplied", "nngp"),
   d1 = 0,
   d2 = NULL,
   k = 5L,
   style = "B",
   ids = NULL,
+  m = 10L,
+  range = NULL,
+  nu = 0.5,
   ...
 )
 }
@@ -23,7 +26,9 @@ polygon object, \strong{or} an \pkg{spdep} \code{nb}/\code{listw} (used directly
 
 \item{type}{Weights construction: \code{"queen"}/\code{"rook"} (polygon contiguity),
 \code{"distance"} (distance band \verb{[d1, d2]}), \code{"knn"} (k nearest neighbours,
-symmetrised), or \code{"supplied"} (validate a user matrix).}
+symmetrised), \code{"supplied"} (validate a user matrix), or \code{"nngp"} (a sparse
+nearest-neighbour Gaussian-process Matern \emph{precision} for point data: a scalable,
+\code{W}-free continuous-domain spatial-error alternative to CAR; Datta et al. 2016).}
 
 \item{d1, d2}{Lower / upper distance band (required for \code{"distance"}).}
 
@@ -35,13 +40,25 @@ triggers a warning (symmetrised before use).}
 
 \item{ids}{Optional unit identifiers (row/column names of \code{W}).}
 
+\item{m}{For \code{type = "nngp"}: number of nearest earlier-neighbours (default 10).}
+
+\item{range}{For \code{type = "nngp"}: Matern range in raw coordinate units (\code{NULL} uses
+~0.1 of the domain extent). Weakly identified from one realisation, so it is fixed
+or selected (like the smoothing penalty), not estimated (Zhang 2004).}
+
+\item{nu}{For \code{type = "nngp"}: Matern smoothness, \code{0.5} (exponential) or \code{1.5}.}
+
 \item{...}{Currently unused.}
 }
 \value{
 An object of class \code{spq_weights}: a list with \code{W} (sparse symmetric
 \code{dgCMatrix}), \code{D} (sparse diagonal degree matrix), \code{ids}, \code{style}, \code{type},
 \code{n_comp} (number of connected components, via \code{\link[spdep:compon]{spdep::n.comp.nb()}}), and
-\code{n_island} (number of zero-degree units).
+\code{n_island} (number of zero-degree units). For \code{type = "nngp"} it additionally
+carries \code{Q} (the sparse Matern precision, used directly by the spatial-error
+M-step), \code{kind = "nngp"}, \code{m}, \code{range}, \code{nu}, \code{ordering}, and \code{coords}; its \code{W} is
+the symmetrised neighbour graph (used only for diagnostics and the spatial block
+bootstrap).
 }
 \description{
 Builds a symmetric, nonnegative, sparse spatial weights matrix \code{W} and its degree

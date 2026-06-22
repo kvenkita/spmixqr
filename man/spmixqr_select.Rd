@@ -17,6 +17,8 @@ spmixqr_select(
   spatial_W = NULL,
   car = c("proper", "icar"),
   car_alpha = 0.95,
+  spatial_plus = FALSE,
+  spatial_plus_k = NULL,
   method = c("ald", "kde"),
   G_grid = 2:3,
   lambda_gate_grid = c(0.1, 1, 10),
@@ -34,6 +36,11 @@ spmixqr_select(
 \code{\link[=spmixqr]{spmixqr()}}. When \code{spatial_error = TRUE} the \code{lambda_error_grid} is searched
 (BIC, with the CAR-effective-df term) and \code{spatial_gate} is forced off (the
 guardrail); \code{car_alpha} is fixed (not selected by the check loss).}
+
+\item{spatial_plus, spatial_plus_k}{Spatial+ confounding-safeguard settings passed to
+\code{\link[=spmixqr]{spmixqr()}} (the residualisation is refit within each CV training fold, so there is
+no leakage). NNGP \code{range} selection is not searched here (use \code{criterion = "bic"}
+comparing manually-built NNGP weights objects).}
 
 \item{G_grid}{Candidate regime counts.}
 
