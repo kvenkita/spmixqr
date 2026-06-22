@@ -1,7 +1,7 @@
 Package: spmixqr
 Type: Package
 Title: Spatial Quantile Regression with Autocorrelation and Mixtures
-Version: 0.3.1
+Version: 0.3.2
 Authors@R: person(c("Kailas", "Venkitasubramanian"), email = "kailasv@gmail.com",
     role = c("aut", "cre"))
 Description: Quantile regression for spatial data that accounts for spatial
@@ -29,7 +29,7 @@ Encoding: UTF-8
 Depends: R (>= 4.1)
 Imports: mixqr (>= 0.2.0), mgcv, spdep, Matrix, methods, stats, graphics,
     grDevices, utils
-Suggests: mixqrgate, sf, quantreg, numDeriv, ggplot2,
+Suggests: sf, quantreg, numDeriv, ggplot2,
     testthat (>= 3.0.0), knitr, rmarkdown
 LazyData: true
 Roxygen: list(markdown = TRUE)

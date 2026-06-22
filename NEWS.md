@@ -1,3 +1,9 @@
+# spmixqr 0.3.2
+
+* Dropped `mixqrgate` from `Suggests`: its internals are vendored (with attribution), not
+  imported, so the dependency was unused. This unblocks the GitHub Actions R-CMD-check,
+  whose clean environment could not resolve the GitHub-only sibling. No code change.
+
 # spmixqr 0.3.1
 
 * Spatial-error vignette: added a formal "Identification under the check loss" result for
