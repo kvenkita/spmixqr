@@ -1,3 +1,13 @@
+# spmixqr 0.3.1
+
+* Spatial-error vignette: added a formal "Identification under the check loss" result for
+  Spatial+. Under an additive (location-shift) covariate effect and an exogenous error, a
+  single mean-based (least-squares) covariate residualisation deconfounds the covariate
+  slope at *every* quantile -- deconfounding is a tau-free conditional-orthogonality
+  property -- given the residualisation smooth (with the spatial term) out-resolves the
+  covariate's spatial mean. Demonstrated at tau = 0.1, 0.5, 0.9; `summary()` wording
+  updated accordingly. (No code behaviour change.)
+
 # spmixqr 0.3.0
 
 Two spatial-dependence additions alongside the existing CAR-phi, grounded in a verified

@@ -119,8 +119,9 @@ print.summary.spmixqr <- function(x, ...) {
   if (isTRUE(x$spatial_plus) && !is.null(x$spatial_plus_r2)) {
     cat("-- Spatial+ confounding safeguard (Dupont, Wood & Augustin 2022) --\n")
     cat("   covariates residualised against a spatial smooth; slopes below are the effect of the\n")
-    cat("   NON-spatial part of each covariate. Residualisation is mean (least-squares) based, so\n")
-    cat("   it deconfounds the tau-slope cleanly for symmetric error (validated by simulation).\n")
+    cat("   NON-spatial part of each covariate. Mean (least-squares) residualisation deconfounds\n")
+    cat("   the slope at EVERY tau under an additive effect (deconfounding is tau-free; see the\n")
+    cat("   spatial-error vignette), given the smooth out-resolves the covariate's spatial mean.\n")
     cat("   Spatial R^2 removed:\n")
     r2 <- x$spatial_plus_r2
     for (i in seq_len(nrow(r2)))

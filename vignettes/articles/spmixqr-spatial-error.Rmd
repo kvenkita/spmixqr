@@ -196,6 +196,37 @@ no-op. The residualisation is mean-based, so it cleanly deconfounds the quantile
 symmetric error; the reported slopes are the effect of the non-spatial part of each
 covariate (see `summary(f_splus)`).
 
+### Identification under the check loss (why mean-based residualisation works)
+
+Spatial+ was derived for least-squares (mean) regression, so does a *mean*-based
+residualisation deconfound the *quantile* slope? Yes — and at every quantile at once.
+Under an additive model `y = m(s) + beta_x x + eps` with an exogenous error
+`eps` and `x = E[x | s] + e`, removing `E[x | s]` makes the conditional quantile affine in
+the residual with slope `beta_x` *for every* `tau`:
+`Q_tau(y | r, s) = beta_x r + h_tau(s)`, where `h_tau(s)` is absorbed by the retained
+spatial term. The key point is that deconfounding is a conditional-orthogonality property
+— it does not depend on `tau` — so a single least-squares residualisation works across the
+whole distribution; there is no need to residualise separately per quantile. (A full proof
+and its boundary cases are in the package's methodological notes.) The recovery holds in
+the tails, not just at the median:
+
+```{r splus-tau}
+taus <- c(0.1, 0.5, 0.9)
+rbind_tau <- function(tau) {
+  fn <- spmixqr(y ~ x, d$data, coords = d$coords, G = 1, tau = tau, spatial_error = FALSE,
+                spatial_coef = FALSE, variance = "none", control = ctl)
+  fp <- spmixqr(y ~ x, d$data, coords = d$coords, G = 1, tau = tau, spatial_error = TRUE,
+                spatial_coef = FALSE, spatial_W = Wn2, spatial_plus = TRUE,
+                variance = "none", control = ctl)
+  c(tau = tau, naive = b(fn), spatial_plus = b(fp))
+}
+round(do.call(rbind, lapply(taus, rbind_tau)), 3)   # true slope = 1 at every tau
+```
+
+The two practical conditions are that the covariate enters additively (so a single slope
+exists) and that the residualisation smooth, together with the spatial term, out-resolves
+the covariate's spatial mean (the Frisch–Waugh–Lovell gap above).
+
 ## Recovery on a known DGP
 
 `sim_spmixqr(spatial_error = TRUE)` generates lattice data with a known CAR effect, so
