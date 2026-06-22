@@ -1,0 +1,179 @@
+# spmixqr ![](https://img.shields.io/badge/lifecycle-experimental-orange.svg)
+
+**Spatial quantile regression with autocorrelation.** `spmixqr` fits
+quantile regression for spatial data and accounts for the spatial
+dependence that ordinary quantile regression ignores. A
+conditional-autoregressive (**CAR/ICAR**) spatial random effect — built
+from a **weights matrix** you derive from queen/rook contiguity,
+distance bands, k-nearest neighbours, or supply yourself — absorbs
+residual spatial autocorrelation, and a permutation **Moran’s I**
+diagnostic tells you whether any spatial structure is left unmodelled.
+It answers questions a mean regression cannot: how the *tails* of an
+outcome respond to covariates across a map, once spatial spillover is
+taken into account.
+
+With one region it is a maintained **spatial-error quantile regression**
+(the lineage of Reich, Fuentes & Dunson 2011); it extends to **finite
+mixtures** of spatial quantile regressions with spatially varying mixing
+and covariate-effect surfaces. It is the spatial member of the `mixqr`
+family and reuses that estimation core.
+
+## Why
+
+No maintained R package fits spatial quantile regression — the only
+dedicated one, `McSpatial`, has been CRAN-archived since 2021, and
+`BSquare` since 2019 — and none combines a quantile likelihood with a
+CAR spatial-error term and contiguity/distance weights tooling.
+`spmixqr` fills that gap.
+
+## Installation
+
+``` r
+# install.packages("remotes")
+remotes::install_github("kvenkita/mixqr")     # dependency
+remotes::install_github("kvenkita/spmixqr")
+```
+
+## Quick start
+
+``` r
+library(spmixqr)
+
+data(columbus_crime); data(columbus_W)
+W <- spq_weights(columbus_W, type = "supplied")   # or spq_weights(polys, "queen")
+
+fit <- spmixqr(crime ~ income + hoval, data = columbus_crime,
+               coords = factor(columbus_crime$id), G = 1, tau = 0.5,
+               spatial_error = TRUE, spatial_coef = FALSE, spatial_W = W)
+summary(fit)              # quantile coefficients + the spatial-error term
+moran_resid(fit)          # residual spatial autocorrelation, before vs after the CAR term
+phi_surface(fit)          # the fitted spatial-effect surface, per region
+```
+
+A fully worked walk-through (Columbus neighbourhood crime: how income’s
+effect on the crime tails varies, and absorbing neighbourhood spillover)
+is in
+[`vignette("spmixqr-primer")`](https://kvenkita.github.io/spmixqr/articles/spmixqr-primer.md).
+
+## Key features
+
+- **Spatial weights, your way.**
+  [`spq_weights()`](https://kvenkita.github.io/spmixqr/reference/spq_weights.md)
+  builds `W` from **queen/rook contiguity** (`sf`/`sp` polygons),
+  **distance bands**, or **k-nearest neighbours**, or accepts a
+  **user-supplied** matrix.
+- **CAR spatial-error term** (`spatial_error = TRUE`): a mean-zero
+  conditional- autoregressive surface with a Leroux proper-CAR / ICAR
+  precision that absorbs residual spatial autocorrelation, with a
+  before/after **Moran’s I** diagnostic and a
+  [`phi_surface()`](https://kvenkita.github.io/spmixqr/reference/phi_surface.md)
+  map.
+- **Quantile regression at any `tau`**, so covariate effects can differ
+  across the distribution (tails vs centre) — single-region or as a
+  finite **mixture** of spatial quantile regressions (spatially varying
+  mixing and slope surfaces).
+- Penalised EM (sparse CAR penalty; `mgcv` smooths for the gate/slope
+  surfaces); exact reductions to `quantreg`, `mixqr`, and `mixqrgate`.
+- Classification-aware inference: a spatial-block bootstrap
+  (recommended) plus a fast sandwich;
+  [`spmixqr_select()`](https://kvenkita.github.io/spmixqr/reference/spmixqr_select.md)
+  for regimes and smoothing; a full S3 surface, surface accessors, and
+  maps.
+
+## Citation
+
+``` r
+citation("spmixqr")
+```
+
+The method builds on Reich, Fuentes & Dunson (2011, *JASA*), Wu & Yao
+(2016, *CSDA*), and Fernandes, Guerre & Horta (2021, *JBES*).
+
+## License
+
+MIT © Kailas Venkitasubramanian.
+
+# Package index
+
+## Model fitting
+
+Fit a spatial quantile regression (single-region or mixture) and
+configure the EM.
+
+- [`spmixqr()`](https://kvenkita.github.io/spmixqr/reference/spmixqr.md)
+  : Fit a spatial finite mixture of quantile regressions
+
+- [`spmixqr_control()`](https://kvenkita.github.io/spmixqr/reference/spmixqr_control.md)
+  :
+
+  Control parameters for
+  [`spmixqr()`](https://kvenkita.github.io/spmixqr/reference/spmixqr.md)
+
+- [`spmixqr_select()`](https://kvenkita.github.io/spmixqr/reference/spmixqr_select.md)
+  : Select regimes and smoothing parameters
+
+## Spatial weights and autocorrelation (CAR / NNGP error)
+
+Build the weights matrix or an NNGP Matern precision (point data),
+diagnose residual spatial autocorrelation, and read the spatial effect.
+
+- [`spq_weights()`](https://kvenkita.github.io/spmixqr/reference/spq_weights.md)
+  : Construct a spatial weights object for the CAR-error term
+- [`moran_resid()`](https://kvenkita.github.io/spmixqr/reference/moran_resid.md)
+  : Permutation Moran's I on the spatial-unit residuals of an spmixqr
+  fit
+- [`phi_surface()`](https://kvenkita.github.io/spmixqr/reference/phi_surface.md)
+  : CAR spatial-error surfaces (with uncertainty)
+
+## Mixture surfaces and prediction
+
+- [`spmixqr_basis()`](https://kvenkita.github.io/spmixqr/reference/spmixqr_basis.md)
+  : Build a spatial basis and its roughness penalty
+- [`coef_surface()`](https://kvenkita.github.io/spmixqr/reference/coef_surface.md)
+  : Spatial coefficient surfaces
+- [`gate_surface()`](https://kvenkita.github.io/spmixqr/reference/gate_surface.md)
+  : Spatial gate surfaces
+- [`predict(`*`<spmixqr>`*`)`](https://kvenkita.github.io/spmixqr/reference/predict.spmixqr.md)
+  : Predictions from a spatial quantile mixture model
+- [`plot(`*`<spmixqr>`*`)`](https://kvenkita.github.io/spmixqr/reference/plot.spmixqr.md)
+  : Plot a spatial quantile mixture fit
+
+## Simulation and data
+
+- [`sim_spmixqr()`](https://kvenkita.github.io/spmixqr/reference/sim_spmixqr.md)
+  : Simulate from a spatial quantile mixture model
+- [`sim_spatial_confound()`](https://kvenkita.github.io/spmixqr/reference/sim_spatial_confound.md)
+  : Simulate point data with spatial confounding (for Spatial+ / NNGP
+  demos)
+- [`columbus_crime`](https://kvenkita.github.io/spmixqr/reference/columbus_crime.md)
+  : Columbus, Ohio neighbourhood crime
+- [`columbus_W`](https://kvenkita.github.io/spmixqr/reference/columbus_W.md)
+  : Queen-contiguity weights for the Columbus neighbourhoods
+- [`lucas_house`](https://kvenkita.github.io/spmixqr/reference/lucas_house.md)
+  : Lucas County (Ohio) house sales (subsample)
+- [`nc_sids`](https://kvenkita.github.io/spmixqr/reference/nc_sids.md) :
+  North Carolina SIDS counts (areal census example)
+- [`nc_sids_W`](https://kvenkita.github.io/spmixqr/reference/nc_sids_W.md)
+  : Queen-contiguity weights for the North Carolina SIDS counties
+- [`meuse_zinc`](https://kvenkita.github.io/spmixqr/reference/meuse_zinc.md)
+  : Meuse river zinc concentrations
+
+## Package
+
+- [`spmixqr-package`](https://kvenkita.github.io/spmixqr/reference/spmixqr-package.md)
+  : spmixqr: Spatial Finite Mixtures of Quantile Regressions
+
+# Articles
+
+### Articles
+
+- [Getting started with
+  spmixqr](https://kvenkita.github.io/spmixqr/articles/spmixqr.md):
+- [A primer on spatial quantile regression with
+  autocorrelation](https://kvenkita.github.io/spmixqr/articles/spmixqr-primer.md):
+- [Spatial CAR-error quantile regression (areal and point
+  data)](https://kvenkita.github.io/spmixqr/articles/spmixqr-spatial-error.md):
+- [Mixtures and spatially varying effects (gate and slope
+  surfaces)](https://kvenkita.github.io/spmixqr/articles/spmixqr-mixtures.md):
+- [Validation: recovery, coverage, and negative
+  controls](https://kvenkita.github.io/spmixqr/articles/spmixqr-validation.md):

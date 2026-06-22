@@ -1,0 +1,13 @@
+pandoc: 3.6.3
+pkgdown: 2.2.0
+pkgdown_sha: ~
+articles:
+  articles/spmixqr-mixtures: spmixqr-mixtures.html
+  spmixqr-primer: spmixqr-primer.html
+  articles/spmixqr-spatial-error: spmixqr-spatial-error.html
+  articles/spmixqr-validation: spmixqr-validation.html
+  spmixqr: spmixqr.html
+last_built: 2026-06-22T11:08Z
+urls:
+  reference: https://kvenkita.github.io/spmixqr/reference
+  article: https://kvenkita.github.io/spmixqr/articles
