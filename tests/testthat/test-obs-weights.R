@@ -62,17 +62,22 @@ test_that("spatial_em_fit unit weights reproduce the unweighted fit", {
   expect_equal(f0$loglik, f1$loglik, tolerance = 1e-8)
 })
 
-test_that("frequency weights match row duplication for coefficients", {
+test_that("frequency weights match row duplication in the unpenalized regime", {
+  ## Under mean-1 weight normalization, frequency = duplication holds EXACTLY only
+  ## without a penalty (scale-invariant weighted quantile regression). G=1 with the
+  ## spatial terms off isolates that regime.
   set.seed(31)
   d <- sim_spmixqr(n = 90, G = 2, tau = 0.5, seed = 31)
   wct <- sample(1:3, nrow(d$data), replace = TRUE)
-  fw <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+  fw <- spmixqr(y ~ x, data = d$data, G = 1, tau = 0.5,
+                spatial_coef = FALSE, spatial_gate = FALSE,
                 weights = wct, weights_type = "frequency", variance = "none",
                 control = spmixqr_control(nstart = 1L, seed = 7))
   dup <- rep(seq_len(nrow(d$data)), wct)
-  fd <- spmixqr(y ~ x, data = d$data[dup, ], coords = d$coords[dup, ], G = 2, tau = 0.5,
-                variance = "none", control = spmixqr_control(nstart = 1L, seed = 7))
-  expect_equal(fw$beta_const, fd$beta_const, tolerance = 1e-3)
+  fd <- spmixqr(y ~ x, data = d$data[dup, ], G = 1, tau = 0.5,
+                spatial_coef = FALSE, spatial_gate = FALSE, variance = "none",
+                control = spmixqr_control(nstart = 1L, seed = 7))
+  expect_equal(fw$beta_const, fd$beta_const, tolerance = 1e-6)
 })
 
 test_that("fit stores weight metadata; unweighted stores NULL prior_weights", {
