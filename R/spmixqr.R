@@ -79,9 +79,11 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
                     method = c("ald", "kde"),
                     lambda_gate = NULL, lambda_coef = NULL, lambda_error = NULL,
                     variance = c("sandwich", "boot", "none"),
+                    weights = NULL, weights_type = c("sampling", "frequency", "precision"),
                     basis = NULL, control = spmixqr_control()) {
   method <- match.arg(method)
   car <- match.arg(car)
+  weights_type <- match.arg(weights_type)
   if (is.character(variance) || is.null(variance))
     variance <- if (is.null(variance)) "none" else match.arg(variance)
   if (!is.null(control$seed)) set.seed(control$seed)
@@ -110,6 +112,9 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
   y <- stats::model.response(mf)
   X <- stats::model.matrix(attr(mf, "terms"), mf)
   n <- length(y); p <- ncol(X)
+  wobj <- resolve_weights(weights, weights_type, data, n)
+  w_obs <- wobj$w          # normalized (mean = 1); stored on fit and used for fitting
+  w_fit <- w_obs
   slope_idx <- which(colnames(X) != "(Intercept)")
   if (length(slope_idx) == 0L && spatial_coef)
     stop("`spatial_coef = TRUE` needs at least one non-intercept covariate.")
@@ -174,7 +179,7 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
   fits <- lapply(starts, function(p0)
     tryCatch(spatial_em_fit(y, Xt, Z, G, tau, method, p0, Pen_beta, Pen_gamma,
                             h_rate, spatial_coef, kdectrl, control,
-                            spatial_error = isTRUE(spatial_error)),
+                            spatial_error = isTRUE(spatial_error), w_obs = w_fit),
              error = function(e) NULL))
   fits <- Filter(Negate(is.null), fits)
   if (length(fits) == 0L) stop("All EM starts failed.")
@@ -185,7 +190,7 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
   ord <- order_components(beta_const, control$label_order, control$order_var)
   best <- permute_fit(best, ord)
   gfit <- pen_irls_multinom(Z, best$posterior, Pen_gamma, control$gate_maxit,
-                            control$gate_tol)
+                            control$gate_tol, w = w_fit)
   best$gamma <- gfit$gamma; best$prior <- gfit$pi; best$gate_hessian <- gfit$hessian
   beta_const <- extract_const(best$beta, des, p)
 
@@ -201,7 +206,7 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
   }
 
   ## ---- effective df, AIC/BIC ----
-  edf <- compute_edf(best, Xt, Z, Pen_beta, Pen_gamma, G, des, spatial_coef)
+  edf <- compute_edf(best, Xt, Z, Pen_beta, Pen_gamma, G, des, spatial_coef, w_obs = w_fit)
   ll <- best$loglik
   aic <- if (is.finite(ll)) -2 * ll + 2 * edf$total else NA_real_
   bic <- if (is.finite(ll)) -2 * ll + log(n) * edf$total else NA_real_
@@ -248,6 +253,8 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
     spatial_plus = isTRUE(spatial_plus),
     spatial_plus_smooths = if (!is.null(sp_plus)) sp_plus$smooths else NULL,
     coords = if (need_geo) geo else NULL, X = X, W = W, y = y,
+    weights = w_obs, prior_weights = wobj$raw, weights_type = weights_type,
+    weights_sum = wobj$sum_raw,
     h = best$h_used),
     class = "spmixqr")
 
@@ -513,11 +520,12 @@ X_fitted <- function(Xt, beta) as.matrix(Xt %*% beta)
 #' The component trace `tr[(X'WpX + P)^{-1} X'WpX]` is computed sparsely when the CAR
 #' block is present (the design is a sparse `Matrix`), adding the CAR-smoother trace.
 #' @keywords internal
-compute_edf <- function(fit, Xt, Z, Pen_beta, Pen_gamma, G, des, spatial_coef) {
+compute_edf <- function(fit, Xt, Z, Pen_beta, Pen_gamma, G, des, spatial_coef, w_obs = NULL) {
   comp <- 0
+  if (is.null(w_obs)) w_obs <- rep(1, nrow(Xt))
   car_on <- isTRUE(des$car_sparse)
   for (k in seq_len(G)) {
-    e <- fit$posterior[, k]                          # weight ~ responsibility
+    e <- w_obs * fit$posterior[, k]                  # weight ~ obs weight * responsibility
     if (car_on) {
       A <- Matrix::crossprod(Xt, e * Xt)
       H <- A + Pen_beta + 1e-8 * Matrix::Diagonal(ncol(Xt))

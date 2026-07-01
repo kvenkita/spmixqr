@@ -49,3 +49,41 @@ test_that("unit weights reproduce the unweighted gate exactly", {
   b <- spmixqr:::pen_irls_multinom(Z, P, Pen, w = rep(1, n))
   expect_identical(a$gamma, b$gamma)
 })
+
+test_that("spatial_em_fit unit weights reproduce the unweighted fit", {
+  set.seed(21)
+  d <- sim_spmixqr(n = 120, G = 2, tau = 0.5, seed = 21)
+  f0 <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                variance = "none", control = spmixqr_control(nstart = 2L, seed = 1))
+  f1 <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                weights = rep(1, nrow(d$data)),
+                variance = "none", control = spmixqr_control(nstart = 2L, seed = 1))
+  expect_equal(f0$beta_const, f1$beta_const, tolerance = 1e-8)
+  expect_equal(f0$loglik, f1$loglik, tolerance = 1e-8)
+})
+
+test_that("frequency weights match row duplication for coefficients", {
+  set.seed(31)
+  d <- sim_spmixqr(n = 90, G = 2, tau = 0.5, seed = 31)
+  wct <- sample(1:3, nrow(d$data), replace = TRUE)
+  fw <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                weights = wct, weights_type = "frequency", variance = "none",
+                control = spmixqr_control(nstart = 1L, seed = 7))
+  dup <- rep(seq_len(nrow(d$data)), wct)
+  fd <- spmixqr(y ~ x, data = d$data[dup, ], coords = d$coords[dup, ], G = 2, tau = 0.5,
+                variance = "none", control = spmixqr_control(nstart = 1L, seed = 7))
+  expect_equal(fw$beta_const, fd$beta_const, tolerance = 1e-3)
+})
+
+test_that("fit stores weight metadata; unweighted stores NULL prior_weights", {
+  d <- sim_spmixqr(n = 50, G = 2, tau = 0.5, seed = 5)
+  f <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+               weights = runif(50, 0.5, 2), weights_type = "precision",
+               variance = "none", control = spmixqr_control(nstart = 1L))
+  expect_identical(f$weights_type, "precision")
+  expect_equal(mean(f$weights), 1)
+  expect_length(f$prior_weights, 50)
+  f0 <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                variance = "none", control = spmixqr_control(nstart = 1L))
+  expect_null(f0$prior_weights)
+})

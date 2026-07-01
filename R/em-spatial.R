@@ -13,8 +13,9 @@
 #' @keywords internal
 spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
                            Pen_beta, Pen_gamma, h, spatial_coef, kdectrl, control,
-                           spatial_error = FALSE) {
+                           spatial_error = FALSE, w_obs = NULL) {
   n <- length(y); P <- ncol(Xt)
+  if (is.null(w_obs)) w_obs <- rep(1, n)
   p <- p_init
   beta <- matrix(0, P, G)
   prev <- NULL; converged <- FALSE; it <- 0L
@@ -22,20 +23,21 @@ spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
   h_used <- h
   component_step <- function(p, beta) {
     for (k in seq_len(G)) {
+      wk <- w_obs * p[, k]
       if (isTRUE(spatial_error)) {
-        cf <- pen_smooth_wqr_car(Xt, y, tau, p[, k], Pen_beta, h,
+        cf <- pen_smooth_wqr_car(Xt, y, tau, wk, Pen_beta, h,
                                  floor_abs = control$sm_floor, beta_init = beta[, k],
                                  maxit = control$coef_maxit, tol = control$coef_tol)
         beta[, k] <- cf$beta
         h_used <<- cf$h
       } else if (spatial_coef) {
-        cf <- pen_smooth_wqr(Xt, y, tau, p[, k], Pen_beta, h,
+        cf <- pen_smooth_wqr(Xt, y, tau, wk, Pen_beta, h,
                              floor_abs = control$sm_floor, beta_init = beta[, k],
                              maxit = control$coef_maxit, tol = control$coef_tol)
         beta[, k] <- cf$beta
         h_used <<- cf$h
       } else {
-        beta[, k] <- mixqr::weighted_rq(Xt, y, tau, w = p[, k],
+        beta[, k] <- mixqr::weighted_rq(Xt, y, tau, w = wk,
           beta_prev = if (any(beta[, k] != 0)) beta[, k] else NULL)
       }
     }
@@ -43,16 +45,17 @@ spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
   }
   densities <- function(beta, p) {
     e <- as.matrix(y - Xt %*% beta)
+    pw <- w_obs * p
     if (method == "ald") {
       sigma <- vapply(seq_len(G), function(k) {
-        den <- sum(p[, k]); num <- sum(p[, k] * rho_tau(e[, k], tau))
+        den <- sum(pw[, k]); num <- sum(pw[, k] * rho_tau(e[, k], tau))
         max(if (den > 0) num / den else 1, 1e-8)
       }, numeric(1))
       dm <- vapply(seq_len(G), function(k) ald_density(e[, k], sigma[k], tau),
                    numeric(n))
       list(sigma = sigma, dens = NULL, dm = dm, e = e)
     } else {
-      dens <- mixqr::constrained_kde(e, p, tau, "unequal", kdectrl)
+      dens <- mixqr::constrained_kde(e, pw, tau, "unequal", kdectrl)
       dm <- vapply(seq_len(G), function(k) pmax(dens[[k]]$eval(e[, k]), .dens_floor),
                    numeric(n))
       list(sigma = NULL, dens = dens, dm = dm, e = e)
@@ -63,7 +66,7 @@ spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
   for (it in seq_len(control$maxit)) {
     beta <- component_step(p, beta)
     cd <- densities(beta, p)
-    gfit <- pen_irls_multinom(Z, p, Pen_gamma, control$gate_maxit, control$gate_tol)
+    gfit <- pen_irls_multinom(Z, p, Pen_gamma, control$gate_maxit, control$gate_tol, w = w_obs)
     prior <- gfit$pi
     pnew <- normalize_rows(pmax(prior * cd$dm, .dens_floor))
     cur <- c(as.numeric(beta), as.numeric(gfit$gamma))
@@ -83,7 +86,7 @@ spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
     if (!is.finite(s0) || s0 <= 0) s0 <- 1
     h_used <- max(control$sm_floor, h * s0)
   }
-  gfit <- pen_irls_multinom(Z, p, Pen_gamma, control$gate_maxit, control$gate_tol)
+  gfit <- pen_irls_multinom(Z, p, Pen_gamma, control$gate_maxit, control$gate_tol, w = w_obs)
   prior <- gfit$pi
 
   pen_b <- 0.5 * sum(vapply(seq_len(G), function(k)
@@ -93,9 +96,9 @@ spatial_em_fit <- function(y, Xt, Z, G, tau, method, p_init,
       as.numeric(crossprod(gfit$gamma[, a], Pen_gamma %*% gfit$gamma[, a])), numeric(1)))
     else 0
   loglik <- if (method == "ald")
-    sum(log(pmax(rowSums(prior * cd$dm), .dens_floor))) else NA_real_
+    sum(w_obs * log(pmax(rowSums(prior * cd$dm), .dens_floor))) else NA_real_
   objective <- if (is.finite(loglik)) loglik - pen_b - pen_g
-               else -sum(p * rho_tau(cd$e, tau)) - pen_b - pen_g
+               else -sum(w_obs * p * rho_tau(cd$e, tau)) - pen_b - pen_g
 
   list(beta = beta, gamma = gfit$gamma, sigma = cd$sigma, dens = cd$dens,
        dm = cd$dm, prior = prior, posterior = p, gate_hessian = gfit$hessian,
