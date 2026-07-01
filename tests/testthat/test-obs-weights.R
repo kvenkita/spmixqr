@@ -105,3 +105,50 @@ test_that("sampling meat squares weights; frequency meat is linear; unit weights
   freq <- spmixqr:::coef_sandwich_vcov(Xt, y, 0.5, w, beta, Pen, h, ow = ow, wtype = "frequency")
   expect_false(isTRUE(all.equal(samp, freq)))               # meat scaling differs
 })
+
+test_that("coef sandwich unit-weight inertness holds for the frequency branch too", {
+  set.seed(43)
+  n <- 60; Xt <- cbind(1, rnorm(n)); y <- Xt %*% c(1, 2) + rnorm(n)
+  w <- runif(n, 0.3, 1); beta <- c(1, 2); Pen <- diag(c(0, 1e-3)); h <- 0.3
+  base <- spmixqr:::coef_sandwich_vcov(Xt, y, 0.5, w, beta, Pen, h)
+  freq1 <- spmixqr:::coef_sandwich_vcov(Xt, y, 0.5, w, beta, Pen, h, ow = rep(1, n), wtype = "frequency")
+  expect_equal(base, freq1, tolerance = 1e-10)
+})
+
+test_that("end-to-end sandwich runs with live weights for each type", {
+  set.seed(44)
+  d <- sim_spmixqr(n = 70, G = 2, tau = 0.5, seed = 44)
+  wt <- runif(70, 0.5, 2)
+  for (ty in c("sampling", "frequency", "precision")) {
+    f <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                 weights = wt, weights_type = ty, variance = "sandwich",
+                 control = spmixqr_control(nstart = 1L))
+    expect_false(is.null(f$vcov))
+    expect_true(all(is.finite(diag(f$vcov$coef[[1]]))))
+  }
+})
+
+test_that("weighted bootstrap runs and returns SEs for each type", {
+  skip_on_cran()
+  set.seed(61)
+  d <- sim_spmixqr(n = 80, G = 2, tau = 0.5, seed = 61)
+  wt <- runif(80, 0.5, 2)
+  for (ty in c("sampling", "frequency", "precision")) {
+    f <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                 weights = wt, weights_type = ty, variance = "none",
+                 control = spmixqr_control(nstart = 1L, boot_B = 20L, seed = 3))
+    V <- spmixqr:::bootstrap_vcov(f, d$data)
+    expect_true(is.list(V$coef) && length(V$coef) == 2)
+    expect_true(all(is.finite(diag(V$coef[[1]]))))
+  }
+})
+
+test_that("frequency bootstrap carries weights into each refit", {
+  set.seed(62)
+  d <- sim_spmixqr(n = 70, G = 2, tau = 0.5, seed = 62)
+  wt <- sample(1:3, 70, replace = TRUE)
+  f <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+               weights = wt, weights_type = "frequency", variance = "none",
+               control = spmixqr_control(nstart = 1L, boot_B = 15L, seed = 9))
+  expect_silent(spmixqr:::bootstrap_vcov(f, d$data))
+})

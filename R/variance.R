@@ -61,16 +61,26 @@ bootstrap_vcov <- function(obj, data = NULL, B = NULL, block = NULL) {
     }
   }
 
+  ow <- obj$weights %||% rep(1, n)
+  wtype <- obj$weights_type %||% "sampling"
+  weighted_draw <- !is.null(obj$prior_weights) && identical(wtype, "sampling")
+  carry_weights <- !is.null(obj$prior_weights) && !identical(wtype, "sampling")
+
   ref <- obj$beta_const
   draws <- vector("list", B)
   for (b in seq_len(B)) {
-    idx <- if (is.null(blocks)) sample.int(n, n, replace = TRUE)
-           else resample_blocks(blocks)
+    idx <- if (is.null(blocks)) {
+             if (weighted_draw) sample.int(n, n, replace = TRUE, prob = ow)
+             else sample.int(n, n, replace = TRUE)
+           } else resample_blocks(blocks, if (weighted_draw) ow else NULL)
+    w_boot <- if (carry_weights) {
+      wi <- ow[idx]; wi * length(wi) / sum(wi)      # renormalize to mean 1 on the resample
+    } else NULL
     fit <- tryCatch(
       spatial_em_fit(obj$y[idx], des$Xt[idx, , drop = FALSE], des$Z[idx, , drop = FALSE],
                      G, obj$tau, obj$method, obj$posterior[idx, , drop = FALSE],
                      des$Pen_beta, des$Pen_gamma, obj$h, obj$spatial_coef, kdectrl, ctl,
-                     spatial_error = isTRUE(obj$spatial_error)),
+                     spatial_error = isTRUE(obj$spatial_error), w_obs = w_boot),
       error = function(e) NULL)
     if (is.null(fit)) next
     bc <- extract_const(fit$beta, des, nrow(ref))
@@ -142,9 +152,11 @@ areal_blocks <- function(obj, nblk = 8L) {
 
 #' Resample whole spatial blocks (with replacement) to length ~ n.
 #' @keywords internal
-resample_blocks <- function(blocks) {
+resample_blocks <- function(blocks, obs_w = NULL) {
   lev <- levels(blocks)
-  chosen <- sample(lev, length(lev), replace = TRUE)
+  prob <- if (is.null(obs_w)) NULL
+          else vapply(lev, function(l) sum(obs_w[blocks == l]), numeric(1))
+  chosen <- sample(lev, length(lev), replace = TRUE, prob = prob)
   unlist(lapply(chosen, function(l) which(blocks == l)))
 }
 
