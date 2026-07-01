@@ -6,7 +6,7 @@
 Bread-meat-bread form with the density read off the fitted smoothed kernel (never
 an ALD stand-in). Disclosed as classification-conditional.}
 \usage{
-coef_sandwich_vcov(Xt, y, tau, w, beta, Pen, h)
+coef_sandwich_vcov(Xt, y, tau, w, beta, Pen, h, ow = NULL, wtype = "sampling")
 }
 \description{
 On the CAR spatial-error path \code{Xt}/\code{Pen} arrive as sparse \pkg{Matrix} \code{dgCMatrix}

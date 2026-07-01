@@ -91,6 +91,8 @@ summary.spmixqr <- function(object, ...) {
               method = object$method, comp = comp_tab, gate = gate_tab,
               loglik = object$loglik, edf = object$edf, aic = object$aic,
               bic = object$bic, se_method = object$se_method,
+              weights_type = if (!is.null(object$prior_weights)) object$weights_type else NULL,
+              n_eff = if (!is.null(object$prior_weights)) object$weights_sum else NULL,
               diagnostics = object$diagnostics, spatial_gate = object$spatial_gate,
               spatial_coef = object$spatial_coef, spatial_plus = isTRUE(object$spatial_plus),
               spatial_plus_r2 = object$diagnostics$spatial_plus,
@@ -153,6 +155,8 @@ print.summary.spmixqr <- function(x, ...) {
   if (identical(x$se_method, "sandwich"))
     cat(" (classification-conditional; use variance='boot' for reporting)")
   cat("\n")
+  if (!is.null(x$weights_type))
+    cat(sprintf("weights: %s (effective n = %.1f)\n", x$weights_type, x$n_eff))
   if (is.finite(x$loglik))
     cat(sprintf("logLik %.2f   edf %.2f   AIC %.1f   BIC %.1f\n",
                 x$loglik, x$edf, x$aic, x$bic))

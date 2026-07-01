@@ -25,6 +25,8 @@ spmixqr(
   lambda_coef = NULL,
   lambda_error = NULL,
   variance = c("sandwich", "boot", "none"),
+  weights = NULL,
+  weights_type = c("sampling", "frequency", "precision"),
   basis = NULL,
   control = spmixqr_control()
 )
@@ -90,6 +92,16 @@ control default; choose with \code{\link[=spmixqr_select]{spmixqr_select()}}.}
 \item{variance}{Inference: \code{"sandwich"} (fast, classification-conditional;
 default), \code{"boot"} (spatial-block/xy bootstrap; recommended for reporting), or
 \code{"none"}.}
+
+\item{weights}{Optional observation weights: a length-\code{n} non-negative numeric
+vector, the name of a column in \code{data}, or a one-sided formula \code{~w}. \code{NULL}
+(default) is unweighted. Distinct from \code{spatial_W} (the CAR neighbour matrix).
+Internally normalized to mean 1; point estimates are scale-invariant.}
+
+\item{weights_type}{Interpretation of \code{weights}, selecting the variance
+estimator (point estimates are identical across types): \code{"sampling"}
+(inverse-inclusion / survey; design-robust SEs, default), \code{"frequency"}
+(integer counts; \code{n_eff = Σw}), or \code{"precision"} (analytic \code{1/Var} weights).}
 
 \item{basis}{Advanced override: a prebuilt \code{\link[=spmixqr_basis]{spmixqr_basis()}}. Usually \code{NULL}
 (built internally from \code{coords}/\code{areal}).}

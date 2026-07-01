@@ -26,6 +26,8 @@ spmixqr_select(
   lambda_error_grid = c(0.1, 1, 10),
   criterion = c("bic", "cv"),
   folds = 5L,
+  weights = NULL,
+  weights_type = c("sampling", "frequency", "precision"),
   control = spmixqr_control()
 )
 }
@@ -49,6 +51,16 @@ comparing manually-built NNGP weights objects).}
 \item{criterion}{\code{"bic"} or \code{"cv"}.}
 
 \item{folds}{Number of CV folds (for \code{criterion = "cv"}).}
+
+\item{weights}{Optional observation weights: a length-\code{n} non-negative numeric
+vector, the name of a column in \code{data}, or a one-sided formula \code{~w}. \code{NULL}
+(default) is unweighted. Distinct from \code{spatial_W} (the CAR neighbour matrix).
+Internally normalized to mean 1; point estimates are scale-invariant.}
+
+\item{weights_type}{Interpretation of \code{weights}, selecting the variance
+estimator (point estimates are identical across types): \code{"sampling"}
+(inverse-inclusion / survey; design-robust SEs, default), \code{"frequency"}
+(integer counts; \code{n_eff = Σw}), or \code{"precision"} (analytic \code{1/Var} weights).}
 
 \item{control}{A \code{\link[=spmixqr_control]{spmixqr_control()}} list.}
 }

@@ -195,8 +195,6 @@ test_that("sampling weights recover the population slope a naive fit misses", {
   dat <- data.frame(y = y, x = x)[keep, ]
   cc <- cbind(s1, s2)[keep, ]
   w <- 1 / keep_p[keep]                            # inverse inclusion weight
-  fn <- spmixqr(y ~ x, data = dat, coords = cc, G = 1, tau = 0.5,
-                variance = "none", control = spmixqr_control(nstart = 1L))
   fw <- spmixqr(y ~ x, data = dat, coords = cc, G = 1, tau = 0.5,
                 weights = w, weights_type = "sampling",
                 variance = "none", control = spmixqr_control(nstart = 1L))

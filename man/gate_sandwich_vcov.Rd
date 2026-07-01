@@ -7,7 +7,7 @@ V = Ainv B Ainv, with A the negative penalised-Q Hessian and B the score crosspr
 Independent-score (not spatial-dependence robust) -- disclosed; the bootstrap is
 the default for spatially-dependent inference.}
 \usage{
-gate_sandwich_vcov(Z, P, fit)
+gate_sandwich_vcov(Z, P, fit, ow = NULL, wtype = "sampling")
 }
 \description{
 Classification-conditional sandwich covariance for the gate coefficients.

@@ -4,7 +4,7 @@
 \alias{spatial_plus_residualize}
 \title{Residualise covariates against a spatial smooth (Spatial+ stage 1).}
 \usage{
-spatial_plus_residualize(X, slope_idx, geo, k = NULL)
+spatial_plus_residualize(X, slope_idx, geo, k = NULL, w = NULL)
 }
 \arguments{
 \item{X}{The component design matrix (with intercept).}
@@ -16,6 +16,9 @@ spatial_plus_residualize(X, slope_idx, geo, k = NULL)
 
 \item{k}{Basis dimension for the smooth (\code{NULL} = a generous default richer than the
 spatial-error resolution).}
+
+\item{w}{Optional numeric vector of length \code{nrow(X)} of observation weights;
+\code{NULL} (default) reproduces the unweighted residualization.}
 }
 \value{
 A list with \code{X} (residualised design), \code{smooths} (named list of fitted \code{gam}s,

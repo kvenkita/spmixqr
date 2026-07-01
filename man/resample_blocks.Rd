@@ -4,7 +4,7 @@
 \alias{resample_blocks}
 \title{Resample whole spatial blocks (with replacement) to length ~ n.}
 \usage{
-resample_blocks(blocks)
+resample_blocks(blocks, obs_w = NULL)
 }
 \description{
 Resample whole spatial blocks (with replacement) to length ~ n.

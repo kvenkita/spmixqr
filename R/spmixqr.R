@@ -49,6 +49,14 @@
 #' @param variance Inference: `"sandwich"` (fast, classification-conditional;
 #'   default), `"boot"` (spatial-block/xy bootstrap; recommended for reporting), or
 #'   `"none"`.
+#' @param weights Optional observation weights: a length-`n` non-negative numeric
+#'   vector, the name of a column in `data`, or a one-sided formula `~w`. `NULL`
+#'   (default) is unweighted. Distinct from `spatial_W` (the CAR neighbour matrix).
+#'   Internally normalized to mean 1; point estimates are scale-invariant.
+#' @param weights_type Interpretation of `weights`, selecting the variance
+#'   estimator (point estimates are identical across types): `"sampling"`
+#'   (inverse-inclusion / survey; design-robust SEs, default), `"frequency"`
+#'   (integer counts; `n_eff = Σw`), or `"precision"` (analytic `1/Var` weights).
 #' @param basis Advanced override: a prebuilt [spmixqr_basis()]. Usually `NULL`
 #'   (built internally from `coords`/`areal`).
 #' @param control A [spmixqr_control()] list.

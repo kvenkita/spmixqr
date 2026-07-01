@@ -4,7 +4,7 @@
 \alias{pen_irls_multinom}
 \title{Fit a penalised weighted multinomial logit by Newton/IRLS.}
 \usage{
-pen_irls_multinom(Z, P, Pen, maxit = 50L, tol = 1e-08)
+pen_irls_multinom(Z, P, Pen, maxit = 50L, tol = 1e-08, w = NULL)
 }
 \arguments{
 \item{Z}{Gate design \verb{n x q1}.}

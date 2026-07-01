@@ -1,3 +1,13 @@
+# spmixqr 0.4.0
+
+* `spmixqr()` and `spmixqr_select()` gain observation `weights` and a
+  `weights_type` argument (`"sampling"`, `"frequency"`, `"precision"`).
+  Weights are threaded through the penalised EM, the log-likelihood, model
+  selection, Spatial+ residualization, and both inference paths (a type-aware
+  sandwich and a weight-carrying / pseudo-population spatial-block bootstrap).
+  Unweighted fits are unchanged. Not to be confused with the spatial weights
+  matrix `spatial_W` (`spq_weights()`).
+
 # spmixqr 0.3.2
 
 * Dropped `mixqrgate` from `Suggests`: its internals are vendored (with attribution), not

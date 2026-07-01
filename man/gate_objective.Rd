@@ -4,7 +4,7 @@
 \alias{gate_objective}
 \title{Penalised gate objective Q(gamma) (for testing the Newton step against optim).}
 \usage{
-gate_objective(gamma, Z, P, Pen)
+gate_objective(gamma, Z, P, Pen, w = NULL)
 }
 \description{
 Penalised gate objective Q(gamma) (for testing the Newton step against optim).

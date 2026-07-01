@@ -4,7 +4,17 @@
 \alias{compute_edf}
 \title{Effective degrees of freedom (component smoothers + gate smoother).}
 \usage{
-compute_edf(fit, Xt, Z, Pen_beta, Pen_gamma, G, des, spatial_coef)
+compute_edf(
+  fit,
+  Xt,
+  Z,
+  Pen_beta,
+  Pen_gamma,
+  G,
+  des,
+  spatial_coef,
+  w_obs = NULL
+)
 }
 \description{
 The component trace \verb{tr[(X'WpX + P)^\{-1\} X'WpX]} is computed sparsely when the CAR

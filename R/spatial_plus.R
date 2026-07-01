@@ -26,6 +26,8 @@
 #'   `region` + `areal` nb.
 #' @param k Basis dimension for the smooth (`NULL` = a generous default richer than the
 #'   spatial-error resolution).
+#' @param w Optional numeric vector of length `nrow(X)` of observation weights;
+#'   `NULL` (default) reproduces the unweighted residualization.
 #' @return A list with `X` (residualised design), `smooths` (named list of fitted `gam`s,
 #'   one per residualised covariate; `NULL` for skipped constant columns), and `spatialR2`
 #'   (a data frame of the spatial R-squared removed per covariate).

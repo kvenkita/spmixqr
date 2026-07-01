@@ -18,7 +18,8 @@ spatial_em_fit(
   spatial_coef,
   kdectrl,
   control,
-  spatial_error = FALSE
+  spatial_error = FALSE,
+  w_obs = NULL
 )
 }
 \description{
