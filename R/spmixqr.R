@@ -140,7 +140,7 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
               "residualised (deconfounded) covariate, so its estimand also changes. v1 ",
               "applies Spatial+ to the constant-slope interpretation; read surfaces with care.",
               call. = FALSE)
-    sp_plus <- spatial_plus_residualize(X, slope_idx, geo, k = spatial_plus_k)
+    sp_plus <- spatial_plus_residualize(X, slope_idx, geo, k = spatial_plus_k, w = w_obs)
     X <- sp_plus$X
   }
   if (need_basis && is.null(basis)) {

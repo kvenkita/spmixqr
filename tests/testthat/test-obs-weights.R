@@ -163,3 +163,23 @@ test_that("spmixqr_select accepts weights (bic and cv)", {
                       criterion = "bic", control = spmixqr_control(nstart = 1L))
   expect_true(is.finite(s$best$score))
 })
+
+test_that("weights compose with spatial_plus", {
+  set.seed(81)
+  d <- sim_spmixqr(n = 90, G = 2, tau = 0.5, seed = 81)
+  expect_no_error(
+    spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+            spatial_plus = TRUE, spatial_coef = FALSE,
+            weights = runif(90, 0.5, 2), weights_type = "precision",
+            variance = "none", control = spmixqr_control(nstart = 1L)))
+})
+
+test_that("spatial_plus residualization responds to weights", {
+  set.seed(82)
+  d <- sim_spmixqr(n = 80, G = 1, tau = 0.5, seed = 82)
+  X <- cbind(`(Intercept)` = 1, x = d$data$x)
+  geo <- list(mode = "point", coords = d$coords, areal = NULL, region = NULL)
+  a <- spmixqr:::spatial_plus_residualize(X, 2L, geo)
+  b <- spmixqr:::spatial_plus_residualize(X, 2L, geo, w = runif(80, 0.2, 3))
+  expect_false(isTRUE(all.equal(a$X[, 2], b$X[, 2])))
+})

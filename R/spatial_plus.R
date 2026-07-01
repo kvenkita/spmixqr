@@ -31,7 +31,7 @@
 #'   (a data frame of the spatial R-squared removed per covariate).
 #' @references Dupont, Wood & Augustin (2022, Biometrics).
 #' @keywords internal
-spatial_plus_residualize <- function(X, slope_idx, geo, k = NULL) {
+spatial_plus_residualize <- function(X, slope_idx, geo, k = NULL, w = NULL) {
   if (!requireNamespace("mgcv", quietly = TRUE))
     stop("Package 'mgcv' is required for spatial_plus.", call. = FALSE)
   nm <- colnames(X)[slope_idx]
@@ -56,10 +56,12 @@ spatial_plus_residualize <- function(X, slope_idx, geo, k = NULL) {
     j <- slope_idx[jj]; xj <- as.numeric(X[, j])
     if (stats::var(xj) < .Machine$double.eps) next        # constant covariate: skip
     df <- base_df; df$xj <- xj
+    if (!is.null(w)) df$.w <- as.numeric(w)
     g <- tryCatch(
-      if (point) mgcv::gam(xj ~ s(c1, c2, bs = "tp", k = kk), data = df, method = "REML")
+      if (point) mgcv::gam(xj ~ s(c1, c2, bs = "tp", k = kk), data = df, method = "REML",
+                           weights = if (!is.null(w)) df$.w else NULL)
       else       mgcv::gam(xj ~ s(reg, bs = "mrf", xt = list(nb = nbL)), data = df,
-                           method = "REML"),
+                           method = "REML", weights = if (!is.null(w)) df$.w else NULL),
       error = function(e) NULL)
     if (is.null(g)) next
     res <- xj - as.numeric(stats::fitted(g))
