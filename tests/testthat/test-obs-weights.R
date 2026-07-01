@@ -92,3 +92,16 @@ test_that("fit stores weight metadata; unweighted stores NULL prior_weights", {
                 variance = "none", control = spmixqr_control(nstart = 1L))
   expect_null(f0$prior_weights)
 })
+
+test_that("sampling meat squares weights; frequency meat is linear; unit weights inert", {
+  set.seed(41)
+  n <- 80; Xt <- cbind(1, rnorm(n)); y <- Xt %*% c(1, 2) + rnorm(n)
+  w <- runif(n, 0.3, 1); beta <- c(1, 2); Pen <- diag(c(0, 1e-3)); h <- 0.3
+  ow <- runif(n, 0.5, 2)
+  base <- spmixqr:::coef_sandwich_vcov(Xt, y, 0.5, w, beta, Pen, h)
+  same <- spmixqr:::coef_sandwich_vcov(Xt, y, 0.5, w, beta, Pen, h, ow = rep(1, n), wtype = "sampling")
+  expect_equal(base, same, tolerance = 1e-10)              # ow = 1 is a no-op
+  samp <- spmixqr:::coef_sandwich_vcov(Xt, y, 0.5, w, beta, Pen, h, ow = ow, wtype = "sampling")
+  freq <- spmixqr:::coef_sandwich_vcov(Xt, y, 0.5, w, beta, Pen, h, ow = ow, wtype = "frequency")
+  expect_false(isTRUE(all.equal(samp, freq)))               # meat scaling differs
+})

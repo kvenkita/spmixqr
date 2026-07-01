@@ -81,17 +81,19 @@ gate_objective <- function(gamma, Z, P, Pen, w = NULL) {
 #' Independent-score (not spatial-dependence robust) -- disclosed; the bootstrap is
 #' the default for spatially-dependent inference.
 #' @keywords internal
-gate_sandwich_vcov <- function(Z, P, fit) {
+gate_sandwich_vcov <- function(Z, P, fit, ow = NULL, wtype = "sampling") {
   n <- nrow(Z); q1 <- ncol(Z); G <- ncol(P); K <- G - 1L
   if (K < 1L) return(matrix(0, 0, 0))
+  if (is.null(ow)) ow <- rep(1, n)
   pis <- fit$pi; pidx <- 2:G
   S <- matrix(0, n, q1 * K)
   for (a in seq_len(K)) {
     r <- P[, pidx[a]] - pis[, pidx[a]]
     S[, ((a - 1L) * q1 + 1L):(a * q1)] <- Z * r
   }
-  A <- -fit$hessian
-  B <- crossprod(S)
+  wcol <- if (identical(wtype, "sampling")) ow^2 else ow
+  A <- -fit$hessian                                # weighted penalised-Q Hessian
+  B <- crossprod(S * sqrt(wcol))                   # t(S) diag(wcol) S
   Ainv <- tryCatch(solve(A), error = function(e) ginv_small(A))
   symmetrise(Ainv %*% B %*% Ainv)
 }

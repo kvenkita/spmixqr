@@ -178,13 +178,18 @@ coef_objective <- function(b, Xt, y, tau, w, Pen, h) {
 #' sandwich already materialises a dense `(p + L')^2` inverse; for very large `L'`
 #' (areal L up to ~400 is fine) the bootstrap is the recommended inference path.
 #' @keywords internal
-coef_sandwich_vcov <- function(Xt, y, tau, w, beta, Pen, h) {
+coef_sandwich_vcov <- function(Xt, y, tau, w, beta, Pen, h, ow = NULL, wtype = "sampling") {
   Xt <- as.matrix(Xt); Pen <- as.matrix(Pen); beta <- as.numeric(beta)
+  if (is.null(ow)) ow <- rep(1, length(w))
+  wt <- ow * w                                     # bread weight: obs * responsibility
   e <- as.numeric(y - Xt %*% beta)
   psi <- psi_smooth(e, tau, h)
-  kw <- w * k_smooth(e, h)
+  kw <- wt * k_smooth(e, h)
   H <- crossprod(Xt, kw * Xt) + Pen
-  meat <- crossprod(Xt, (w^2 * psi^2) * Xt)
+  ## sampling: design-robust meat Σ (ω p ψ)^2 x x'  (weight squared)
+  ## frequency/precision: model-based meat Σ ω (p ψ)^2 x x'  (weight linear)
+  meat_factor <- if (identical(wtype, "sampling")) wt^2 * psi^2 else ow * w^2 * psi^2
+  meat <- crossprod(Xt, meat_factor * Xt)
   Hinv <- tryCatch(solve(H), error = function(ee) ginv_small(H))
   symmetrise(Hinv %*% meat %*% Hinv)
 }

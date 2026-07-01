@@ -7,11 +7,14 @@
 #' @keywords internal
 sandwich_vcov <- function(obj) {
   des <- obj$design
+  ow <- obj$weights %||% rep(1, length(obj$y))
+  wtype <- obj$weights_type %||% "sampling"
   gfit <- list(pi = obj$prior, hessian = des_gate_hessian(obj))
-  Vg <- gate_sandwich_vcov(des$Z, obj$posterior, gfit)
+  Vg <- gate_sandwich_vcov(des$Z, obj$posterior, gfit, ow = ow, wtype = wtype)
   Vc <- lapply(seq_len(obj$G), function(k)
     coef_sandwich_vcov(des$Xt, obj$y, obj$tau, obj$posterior[, k],
-                       obj$coefficients[, k], des$Pen_beta, obj$h))
+                       obj$coefficients[, k], des$Pen_beta, obj$h,
+                       ow = ow, wtype = wtype))
   list(gate = Vg, coef = Vc, method = "sandwich",
        note = "classification-conditional; use variance='boot' for reporting")
 }
@@ -19,7 +22,8 @@ sandwich_vcov <- function(obj) {
 #' Recover the gate Hessian for the sandwich (refit at the stored gate).
 #' @keywords internal
 des_gate_hessian <- function(obj) {
-  pen_irls_multinom(obj$design$Z, obj$posterior, obj$design$Pen_gamma)$hessian
+  pen_irls_multinom(obj$design$Z, obj$posterior, obj$design$Pen_gamma,
+                    w = obj$weights %||% rep(1, length(obj$y)))$hessian
 }
 
 #' Bootstrap covariance (xy-pairs or spatial-block) of the EM pipeline.
