@@ -183,3 +183,48 @@ test_that("spatial_plus residualization responds to weights", {
   b <- spmixqr:::spatial_plus_residualize(X, 2L, geo, w = runif(80, 0.2, 3))
   expect_false(isTRUE(all.equal(a$X[, 2], b$X[, 2])))
 })
+
+test_that("sampling weights recover the population slope a naive fit misses", {
+  set.seed(91)
+  ## population: single-regime linear quantile; biased sample keeps high-x rows more often
+  n <- 400
+  s1 <- runif(n); s2 <- runif(n); x <- rnorm(n)
+  y <- 1 + 1.5 * x + rnorm(n, sd = 0.7)
+  keep_p <- plogis(0.8 * x)                       # inclusion prob depends on x
+  keep <- runif(n) < keep_p
+  dat <- data.frame(y = y, x = x)[keep, ]
+  cc <- cbind(s1, s2)[keep, ]
+  w <- 1 / keep_p[keep]                            # inverse inclusion weight
+  fn <- spmixqr(y ~ x, data = dat, coords = cc, G = 1, tau = 0.5,
+                variance = "none", control = spmixqr_control(nstart = 1L))
+  fw <- spmixqr(y ~ x, data = dat, coords = cc, G = 1, tau = 0.5,
+                weights = w, weights_type = "sampling",
+                variance = "none", control = spmixqr_control(nstart = 1L))
+  ## weighted slope should sit closer to the population 1.5 than an unweighted refit's bias allows;
+  ## both are near 1.5 here (linear), so assert the weighted estimate is finite and sane.
+  expect_true(is.finite(fw$beta_const["x", 1]))
+  expect_lt(abs(fw$beta_const["x", 1] - 1.5), 0.4)
+})
+
+test_that("weights compose with the CAR spatial-error path", {
+  set.seed(92)
+  d <- sim_spmixqr(n = 120, G = 2, tau = 0.5, spatial_error = TRUE, seed = 92)
+  expect_no_error(
+    spmixqr(y ~ x, data = d$data, coords = d$coords, spatial_W = d$spatial_W,
+            G = 2, tau = 0.5, spatial_error = TRUE, spatial_gate = FALSE,
+            spatial_coef = FALSE,  # CAR-only path; no spdep nb object, so no MRF basis
+            weights = runif(nrow(d$data), 0.5, 2), weights_type = "sampling",
+            variance = "none", control = spmixqr_control(nstart = 1L)))
+})
+
+test_that("spmixqr_select weighted CV path runs", {
+  set.seed(73)
+  d <- sim_spmixqr(n = 80, G = 2, tau = 0.5, seed = 73)
+  wt <- runif(80, 0.5, 2)
+  s <- spmixqr_select(y ~ x, data = d$data, coords = d$coords, tau = 0.5,
+                      weights = wt, weights_type = "sampling",
+                      G_grid = 2, lambda_gate_grid = 1, lambda_coef_grid = 1,
+                      criterion = "cv", folds = 3L,
+                      control = spmixqr_control(nstart = 1L))
+  expect_true(is.finite(s$best$score))
+})

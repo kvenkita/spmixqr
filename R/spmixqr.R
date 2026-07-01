@@ -193,6 +193,7 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
                             control$gate_tol, w = w_fit)
   best$gamma <- gfit$gamma; best$prior <- gfit$pi; best$gate_hessian <- gfit$hessian
   beta_const <- extract_const(best$beta, des, p)
+  rownames(beta_const) <- colnames(X)   # name rows so fw$beta_const["x", 1] works
 
   ## ---- label-stability diagnostic (slope-surface crossing) ----
   lab_stab <- NA_real_
