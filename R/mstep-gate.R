@@ -27,8 +27,9 @@ gate_predict <- function(gamma, Z) softmax_rows(Z %*% gamma)
 #' @param maxit,tol Newton iterations / tolerance.
 #' @return list(gamma `q1 x (G-1)`, hessian, pi, converged).
 #' @keywords internal
-pen_irls_multinom <- function(Z, P, Pen, maxit = 50L, tol = 1e-8) {
+pen_irls_multinom <- function(Z, P, Pen, maxit = 50L, tol = 1e-8, w = NULL) {
   n <- nrow(Z); q1 <- ncol(Z); G <- ncol(P)
+  if (is.null(w)) w <- rep(1, n)
   if (G < 2L)
     return(list(gamma = matrix(0, q1, 0), hessian = matrix(0, 0, 0),
                 pi = matrix(1, n, 1), converged = TRUE))
@@ -40,7 +41,7 @@ pen_irls_multinom <- function(Z, P, Pen, maxit = 50L, tol = 1e-8) {
     pis <- softmax_rows(Z %*% gamma)
     g <- numeric(q1 * K)
     for (a in seq_len(K)) {
-      r <- P[, pidx[a]] - pis[, pidx[a]]
+      r <- w * (P[, pidx[a]] - pis[, pidx[a]])
       g[((a - 1L) * q1 + 1L):(a * q1)] <- crossprod(Z, r) - Pen %*% gamma[, a]
     }
     H <- matrix(0, q1 * K, q1 * K)
@@ -48,8 +49,8 @@ pen_irls_multinom <- function(Z, P, Pen, maxit = 50L, tol = 1e-8) {
       ia <- ((a - 1L) * q1 + 1L):(a * q1)
       for (b in seq_len(K)) {
         ib <- ((b - 1L) * q1 + 1L):(b * q1)
-        w <- pis[, pidx[a]] * ((a == b) - pis[, pidx[b]])
-        block <- -crossprod(Z, w * Z)
+        wv <- w * pis[, pidx[a]] * ((a == b) - pis[, pidx[b]])
+        block <- -crossprod(Z, wv * Z)
         if (a == b) block <- block - Pen
         H[ia, ib] <- block
       }
@@ -65,9 +66,10 @@ pen_irls_multinom <- function(Z, P, Pen, maxit = 50L, tol = 1e-8) {
 
 #' Penalised gate objective Q(gamma) (for testing the Newton step against optim).
 #' @keywords internal
-gate_objective <- function(gamma, Z, P, Pen) {
+gate_objective <- function(gamma, Z, P, Pen, w = NULL) {
+  if (is.null(w)) w <- rep(1, nrow(Z))
   pis <- softmax_rows(Z %*% gamma)
-  ll <- sum(P * log(pmax(pis, .dens_floor)))
+  ll <- sum(w * P * log(pmax(pis, .dens_floor)))
   pen <- 0
   for (a in seq_len(ncol(gamma)))
     pen <- pen + 0.5 * as.numeric(crossprod(gamma[, a], Pen %*% gamma[, a]))

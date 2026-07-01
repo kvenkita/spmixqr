@@ -28,3 +28,24 @@ test_that("resolve_weights rejects bad input", {
   expect_error(resolve_weights(c(1, NA, 1), "sampling", NULL, 3L), "finite")
   expect_error(resolve_weights(~wt, "sampling", data = NULL, n = 3L), "data")
 })
+
+test_that("weighted gate matches row-duplication (frequency semantics)", {
+  set.seed(11)
+  n <- 60; Z <- cbind(1, rnorm(n)); G <- 2
+  P <- spmixqr:::normalize_rows(matrix(runif(n * G), n, G))
+  Pen <- diag(c(0, 1e-3))
+  wct <- sample(1:3, n, replace = TRUE)
+  fit_w <- spmixqr:::pen_irls_multinom(Z, P, Pen, w = wct)
+  dup <- rep(seq_len(n), wct)
+  fit_d <- spmixqr:::pen_irls_multinom(Z[dup, ], P[dup, ], Pen)
+  expect_equal(as.numeric(fit_w$gamma), as.numeric(fit_d$gamma), tolerance = 1e-5)
+})
+
+test_that("unit weights reproduce the unweighted gate exactly", {
+  set.seed(12)
+  n <- 40; Z <- cbind(1, rnorm(n)); P <- spmixqr:::normalize_rows(matrix(runif(n * 2), n, 2))
+  Pen <- diag(c(0, 1e-3))
+  a <- spmixqr:::pen_irls_multinom(Z, P, Pen)
+  b <- spmixqr:::pen_irls_multinom(Z, P, Pen, w = rep(1, n))
+  expect_identical(a$gamma, b$gamma)
+})
