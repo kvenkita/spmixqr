@@ -26,4 +26,5 @@ test_that("resolve_weights rejects bad input", {
   expect_error(resolve_weights(c(1, 1), "sampling", NULL, 3L), "length")
   expect_error(resolve_weights(c(0, 0, 0), "sampling", NULL, 3L), "all")
   expect_error(resolve_weights(c(1, NA, 1), "sampling", NULL, 3L), "finite")
+  expect_error(resolve_weights(~wt, "sampling", data = NULL, n = 3L), "data")
 })

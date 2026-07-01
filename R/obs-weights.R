@@ -18,6 +18,9 @@ resolve_weights <- function(weights, weights_type = c("sampling", "frequency", "
   if (is.null(weights))
     return(list(w = rep(1, n), raw = NULL, type = weights_type,
                 sum_raw = as.numeric(n), weighted = FALSE))
+  if ((inherits(weights, "formula") || (is.character(weights) && length(weights) == 1L)) &&
+      is.null(data))
+    stop("`data` must be provided when `weights` is a formula or a column name.", call. = FALSE)
   raw <- if (inherits(weights, "formula")) {
     v <- all.vars(weights)
     if (length(v) != 1L) stop("`weights` formula must name exactly one variable.", call. = FALSE)
@@ -31,7 +34,7 @@ resolve_weights <- function(weights, weights_type = c("sampling", "frequency", "
   if (length(raw) != n)
     stop("`weights` has length ", length(raw), " but the model has ", n,
          " observations (length mismatch).", call. = FALSE)
-  if (anyNA(raw) || any(!is.finite(raw)))
+  if (any(!is.finite(raw)))
     stop("`weights` must be finite (no NA/Inf).", call. = FALSE)
   if (any(raw < 0)) stop("`weights` must be non-negative.", call. = FALSE)
   s <- sum(raw)
