@@ -152,3 +152,14 @@ test_that("frequency bootstrap carries weights into each refit", {
                control = spmixqr_control(nstart = 1L, boot_B = 15L, seed = 9))
   expect_silent(spmixqr:::bootstrap_vcov(f, d$data))
 })
+
+test_that("spmixqr_select accepts weights (bic and cv)", {
+  set.seed(71)
+  d <- sim_spmixqr(n = 90, G = 2, tau = 0.5, seed = 71)
+  wt <- runif(90, 0.5, 2)
+  s <- spmixqr_select(y ~ x, data = d$data, coords = d$coords, tau = 0.5,
+                      weights = wt, weights_type = "sampling",
+                      G_grid = 2, lambda_gate_grid = 1, lambda_coef_grid = 1,
+                      criterion = "bic", control = spmixqr_control(nstart = 1L))
+  expect_true(is.finite(s$best$score))
+})

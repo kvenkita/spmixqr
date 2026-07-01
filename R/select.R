@@ -32,8 +32,11 @@ spmixqr_select <- function(formula, data, coords = NULL, areal = NULL, tau = 0.5
                            lambda_coef_grid = c(0.1, 1, 10),
                            lambda_error_grid = c(0.1, 1, 10),
                            criterion = c("bic", "cv"), folds = 5L,
+                           weights = NULL,
+                           weights_type = c("sampling", "frequency", "precision"),
                            control = spmixqr_control()) {
   method <- match.arg(method); criterion <- match.arg(criterion); car <- match.arg(car)
+  weights_type <- match.arg(weights_type)
   if (method == "kde") criterion <- "cv"
   if (criterion == "cv" && inherits(spatial_W, "spq_weights"))
     stop("criterion='cv' cannot subset a prebuilt `spatial_W` per fold; use ",
@@ -46,9 +49,10 @@ spmixqr_select <- function(formula, data, coords = NULL, areal = NULL, tau = 0.5
                       lambda_coef = lambda_coef_grid, lambda_error = le_grid,
                       KEEP.OUT.ATTRS = FALSE)
   n <- nrow(data)
+  wvec <- resolve_weights(weights, weights_type, data, n)$raw   # NULL when unweighted
   fold_id <- if (criterion == "cv") sample(rep_len(seq_len(folds), n)) else NULL
 
-  fit_one <- function(dat, cc, g, lg, lc, le) {
+  fit_one <- function(dat, cc, g, lg, lc, le, wv = NULL) {
     spmixqr(formula, dat, cc, areal, G = g, tau = tau, gating = gating,
             spatial_gate = sg, spatial_coef = spatial_coef,
             spatial_error = spatial_error, spatial_W = spatial_W,
@@ -56,19 +60,21 @@ spmixqr_select <- function(formula, data, coords = NULL, areal = NULL, tau = 0.5
             spatial_plus = spatial_plus, spatial_plus_k = spatial_plus_k,
             method = method, lambda_gate = lg, lambda_coef = lc,
             lambda_error = if (isTRUE(spatial_error)) le else NULL,
+            weights = wv, weights_type = weights_type,
             variance = "none", control = control)
   }
 
   score_row <- function(g, lg, lc, le) {
     if (criterion == "bic") {
-      fit <- fit_one(data, coords, g, lg, lc, le)
+      fit <- fit_one(data, coords, g, lg, lc, le, wv = wvec)
       return(fit$bic)
     }
     err <- 0
     for (f in seq_len(folds)) {
       tr <- fold_id != f; te <- !tr
       cc_tr <- coords_subset(coords, tr); cc_te <- coords_subset(coords, te)
-      fit <- tryCatch(fit_one(data[tr, , drop = FALSE], cc_tr, g, lg, lc, le),
+      wv_tr <- if (is.null(wvec)) NULL else wvec[tr]
+      fit <- tryCatch(fit_one(data[tr, , drop = FALSE], cc_tr, g, lg, lc, le, wv = wv_tr),
                       error = function(e) NULL)
       if (is.null(fit)) { err <- err + Inf; next }
       qhat <- tryCatch(predict(fit, newdata = data[te, , drop = FALSE],
@@ -76,7 +82,8 @@ spmixqr_select <- function(formula, data, coords = NULL, areal = NULL, tau = 0.5
                        error = function(e) NULL)
       if (is.null(qhat)) { err <- err + Inf; next }
       yte <- data[te, all.vars(formula)[1L]]
-      err <- err + sum(rho_tau(yte - qhat, tau))
+      w_te <- if (is.null(wvec)) 1 else wvec[te]
+      err <- err + sum(w_te * rho_tau(yte - qhat, tau))
     }
     err
   }
@@ -85,7 +92,7 @@ spmixqr_select <- function(formula, data, coords = NULL, areal = NULL, tau = 0.5
                        grid$lambda_error)
   best <- grid[which.min(grid$score), , drop = FALSE]
   fit <- fit_one(data, coords, best$G, best$lambda_gate, best$lambda_coef,
-                 best$lambda_error)
+                 best$lambda_error, wv = wvec)
   list(fit = fit, best = best, criterion = criterion, table = grid)
 }
 
