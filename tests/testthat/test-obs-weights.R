@@ -226,3 +226,33 @@ test_that("spmixqr_select weighted CV path runs", {
                       control = spmixqr_control(nstart = 1L))
   expect_true(is.finite(s$best$score))
 })
+
+test_that("frequency sandwich rescales to n_eff relative to precision", {
+  set.seed(51)
+  d <- sim_spmixqr(n = 80, G = 2, tau = 0.5, seed = 51)
+  wt <- sample(1:4, 80, replace = TRUE)
+  ff <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                weights = wt, weights_type = "frequency", variance = "sandwich",
+                control = spmixqr_control(nstart = 1L, seed = 2))
+  fp <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                weights = wt, weights_type = "precision", variance = "sandwich",
+                control = spmixqr_control(nstart = 1L, seed = 2))
+  fac <- length(ff$y) / ff$weights_sum
+  expect_lt(fac, 1)                                            # n_eff > n so SEs shrink
+  expect_equal(diag(ff$vcov$coef[[1]]),
+               diag(fp$vcov$coef[[1]]) * fac, tolerance = 1e-8)
+})
+
+test_that("frequency bootstrap rescales to n_eff relative to precision", {
+  set.seed(52)
+  d <- sim_spmixqr(n = 70, G = 2, tau = 0.5, seed = 52)
+  wt <- sample(1:3, 70, replace = TRUE)
+  ctl <- spmixqr_control(nstart = 1L, boot_B = 15L, seed = 5)
+  ff <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                weights = wt, weights_type = "frequency", variance = "boot", control = ctl)
+  fp <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                weights = wt, weights_type = "precision", variance = "boot", control = ctl)
+  fac <- length(ff$y) / ff$weights_sum
+  expect_equal(diag(ff$vcov$coef[[1]]),
+               diag(fp$vcov$coef[[1]]) * fac, tolerance = 1e-6)
+})

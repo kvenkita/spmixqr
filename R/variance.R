@@ -15,6 +15,14 @@ sandwich_vcov <- function(obj) {
     coef_sandwich_vcov(des$Xt, obj$y, obj$tau, obj$posterior[, k],
                        obj$coefficients[, k], des$Pen_beta, obj$h,
                        ow = ow, wtype = wtype))
+  ## frequency weights: rescale to the effective (replication) sample size n_eff = Σω_raw,
+  ## so SEs shrink with the replication count (DESIGN §6). Exact in the unpenalized regime;
+  ## leading-order under a penalty. Sampling (design-based) and precision (lm-style) keep n.
+  if (identical(wtype, "frequency") && !is.null(obj$prior_weights)) {
+    fac <- length(obj$y) / obj$weights_sum
+    Vc <- lapply(Vc, function(V) V * fac)
+    if (!is.null(Vg) && length(Vg)) Vg <- Vg * fac
+  }
   list(gate = Vg, coef = Vc, method = "sandwich",
        note = "classification-conditional; use variance='boot' for reporting")
 }
@@ -104,6 +112,14 @@ bootstrap_vcov <- function(obj, data = NULL, B = NULL, block = NULL) {
   if (K > 0L) {
     gidx <- (P * G + 1L):(P * G + q1 * K)
     Vgate <- Vall[gidx, gidx, drop = FALSE]
+  }
+  ## frequency weights: rescale the bootstrap covariance to n_eff (consistent with the
+  ## sandwich); the resample draws n units, so variance ~1/n is corrected to ~1/n_eff.
+  if (identical(wtype, "frequency") && !is.null(obj$prior_weights)) {
+    fac <- n / obj$weights_sum
+    Vall <- Vall * fac
+    Vcoef <- lapply(Vcoef, function(V) V * fac)
+    if (!is.null(Vgate)) Vgate <- Vgate * fac
   }
   list(coef = Vcoef, gate = Vgate, all = Vall, method = "boot",
        note = sprintf("%s bootstrap, %d replicates", boot_kind, nrow(draws)))
