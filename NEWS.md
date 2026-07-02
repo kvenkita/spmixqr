@@ -2,11 +2,19 @@
 
 * `spmixqr()` and `spmixqr_select()` gain observation `weights` and a
   `weights_type` argument (`"sampling"`, `"frequency"`, `"precision"`).
-  Weights are threaded through the penalised EM, the log-likelihood, model
-  selection, Spatial+ residualization, and both inference paths (a type-aware
-  sandwich and a weight-carrying / pseudo-population spatial-block bootstrap).
-  Unweighted fits are unchanged. Not to be confused with the spatial weights
-  matrix `spatial_W` (`spq_weights()`).
+  Weights are threaded through the penalised EM (the weighted check loss, scale,
+  gate, and log-likelihood; the latent-class E-step is left unweighted), model
+  selection, Spatial+ residualization, and both inference paths. Point estimates
+  are identical across the three types; the type selects the variance estimator:
+  `"sampling"` uses a design-robust sandwich and a pseudo-population bootstrap,
+  while `"frequency"`/`"precision"` use a model-based sandwich. For `"frequency"`
+  the standard errors and the reported `logLik`/AIC/BIC use the effective sample
+  size `sum(weights)`. Unweighted fits are unchanged. Not to be confused with the
+  spatial weights matrix `spatial_W` (`spq_weights()`).
+* Rows with `NA` in any model variable (response, covariates, gating, coordinates,
+  or the weight) are now dropped jointly before fitting, so the design, gating,
+  coordinates, and weights stay aligned (previously an `NA` in a model variable
+  could error the fit).
 
 # spmixqr 0.3.2
 

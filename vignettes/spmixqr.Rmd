@@ -48,6 +48,31 @@ moran_resid(fit)
 Residual spatial clustering that is present before the CAR term drops toward
 non-significance after it: the spatial effect soaks up the neighbourhood spillover.
 
+## Observation weights
+
+Pass a per-observation `weights` vector (a survey/sampling weight, a frequency count,
+or a precision weight) to weight the fit. This is distinct from the spatial neighbour
+matrix `spatial_W`. `weights_type` chooses the interpretation: it does **not** change
+the point estimates, only the standard errors and the effective sample size.
+
+```{r weights}
+set.seed(1)
+w <- runif(nrow(columbus_crime), 0.5, 2)          # e.g. inverse inclusion probabilities
+
+fit_w <- spmixqr(crime ~ income + hoval, data = columbus_crime,
+                 coords = factor(columbus_crime$id), G = 1, tau = 0.5,
+                 spatial_error = TRUE, spatial_coef = FALSE, spatial_W = W,
+                 weights = w, weights_type = "sampling",
+                 control = spmixqr_control(nstart = 1L, seed = 1))
+coef(fit_w)
+```
+
+Use `"sampling"` for inverse-inclusion / survey weights (design-robust SEs),
+`"frequency"` for integer replication counts (SEs and AIC/BIC then reflect the total
+count `sum(weights)`), or `"precision"` for analytic `1/variance` weights. The
+spatial-block bootstrap (`variance = "boot"`) is the recommended inference path and
+is weight-aware for every type.
+
 See `vignette("spmixqr-primer")` for the full worked example (how income's effect
 varies across the crime distribution, mapping the spatial effect, inference, and
 diagnostics) and `vignette("spmixqr-mixtures")` for the finite-mixture features.

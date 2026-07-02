@@ -126,6 +126,26 @@ through the slope surfaces, with scalar per-regime intercepts. Component
 identities are ordered by a sign-stable separating slope; the \code{label_stability}
 diagnostic warns when slope surfaces cross (a single global label is then only
 approximately coherent).
+
+\strong{Observation weights.} \code{weights} attaches a per-observation weight (distinct
+from the CAR \code{spatial_W} neighbour matrix) and enters the penalised EM through
+the weighted check loss, the scale, the gate, and the log-likelihood; the
+latent-class E-step is left unweighted (the weight multiplies each observation's
+whole complete-data term, so the class posterior is weight-free). Weights are
+normalised to mean 1 internally, which keeps the smoothing penalties, scale,
+\code{logLik}, and effective df on the same footing as an unweighted fit; a
+consequence is that \code{"frequency"} weights reproduce a row-duplicated fit exactly
+only in the unpenalised case. \strong{Point estimates are identical across the three
+\code{weights_type} values} -- the type selects only the variance estimator and the
+effective sample size. \code{"sampling"} gives a design-robust (weight-squared)
+sandwich and a pseudo-population resampling bootstrap (a first-order
+approximation, not a rigorous survey / replicate-weight bootstrap); \code{"precision"}
+and \code{"frequency"} give a model-based (weight-linear) sandwich. For \code{"frequency"}
+the standard errors \emph{and} the reported \code{logLik}/AIC/BIC use the effective
+(replication) sample size \code{n_eff = sum(weights)}, so they shrink with the
+replication count; \code{"precision"} and \code{"sampling"} use the number of rows \code{n}.
+Rows with \code{NA} in any model variable (response, covariates, gating, coordinates,
+or the weight) are dropped jointly before fitting.
 }
 \examples{
 set.seed(1)

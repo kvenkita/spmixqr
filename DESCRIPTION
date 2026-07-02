@@ -11,7 +11,9 @@ Description: Quantile regression for spatial data that accounts for spatial
     (2000) <doi:10.1007/978-1-4612-1284-3_4>), absorbs residual spatial
     autocorrelation, with permutation Moran's I diagnostics; the single-region case
     is a maintained spatial-error quantile regression in the lineage of Reich,
-    Fuentes and Dunson (2011) <doi:10.1198/jasa.2010.ap09237>. The estimator extends
+    Fuentes and Dunson (2011) <doi:10.1198/jasa.2010.ap09237>. Per-observation
+    survey/sampling, frequency, or precision weights are supported with type-aware
+    inference. The estimator extends
     to finite mixtures of quantile regressions with spatially varying mixing and
     spatially varying covariate-effect surfaces, reusing the 'mixqr' core (Wu and Yao
     (2016) <doi:10.1016/j.csda.2015.08.013>). A penalised expectation-maximisation

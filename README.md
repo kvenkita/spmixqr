@@ -69,6 +69,10 @@ crime tails varies, and absorbing neighbourhood spillover) is in
   quantile regressions (spatially varying mixing and slope surfaces).
 * Penalised EM (sparse CAR penalty; `mgcv` smooths for the gate/slope surfaces);
   exact reductions to `quantreg`, `mixqr`, and `mixqrgate`.
+* **Observation weights** (`weights=`, `weights_type=`): survey/sampling
+  (design-robust SEs), frequency (SEs and AIC/BIC use the effective count
+  `sum(weights)`), or precision weights — distinct from the spatial weights matrix
+  `W`, and weight-aware in both the sandwich and the bootstrap.
 * Classification-aware inference: a spatial-block bootstrap (recommended) plus a fast
   sandwich; `spmixqr_select()` for regimes and smoothing; a full S3 surface, surface
   accessors, and maps.
