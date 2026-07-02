@@ -205,7 +205,9 @@ confint.spmixqr <- function(object, parm, level = 0.95, ...) {
 logLik.spmixqr <- function(object, ...) {
   val <- object$loglik
   attr(val, "df") <- object$edf
-  attr(val, "nobs") <- length(object$y)
+  attr(val, "nobs") <- if (isTRUE(object$weights_type == "frequency") &&
+                           !is.null(object$prior_weights)) object$weights_sum
+                       else length(object$y)
   class(val) <- "logLik"
   val
 }

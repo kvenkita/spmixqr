@@ -256,3 +256,60 @@ test_that("frequency bootstrap rescales to n_eff relative to precision", {
   expect_equal(diag(ff$vcov$coef[[1]]),
                diag(fp$vcov$coef[[1]]) * fac, tolerance = 1e-6)
 })
+
+test_that("NA in a model variable drops the row and aligns weights (all forms)", {
+  set.seed(101)
+  d <- sim_spmixqr(n = 60, G = 2, tau = 0.5, seed = 101)
+  dd <- d$data; cc <- d$coords
+  dd$x[5] <- NA                                   # NA in a predictor
+  wt <- runif(60, 0.5, 2)
+  ## vector weights: fits, drops the NA row
+  fv <- spmixqr(y ~ x, data = dd, coords = cc, G = 2, tau = 0.5, weights = wt,
+                weights_type = "sampling", variance = "none",
+                control = spmixqr_control(nstart = 1L, seed = 3))
+  expect_equal(length(fv$y), 59L)
+  ## equals fitting on the manually complete-cased data with matching weights
+  keep <- !is.na(dd$x)
+  fref <- spmixqr(y ~ x, data = dd[keep, ], coords = cc[keep, ], G = 2, tau = 0.5,
+                  weights = wt[keep], weights_type = "sampling", variance = "none",
+                  control = spmixqr_control(nstart = 1L, seed = 3))
+  expect_equal(fv$beta_const, fref$beta_const, tolerance = 1e-8)
+  ## column-name and formula weight forms also fit (no length error)
+  dd$w <- wt
+  expect_silent(spmixqr(y ~ x, data = dd, coords = cc, G = 2, tau = 0.5,
+                        weights = "w", weights_type = "sampling", variance = "none",
+                        control = spmixqr_control(nstart = 1L)))
+  expect_silent(spmixqr(y ~ x, data = dd, coords = cc, G = 2, tau = 0.5,
+                        weights = ~w, weights_type = "sampling", variance = "none",
+                        control = spmixqr_control(nstart = 1L)))
+})
+
+test_that("NA handling is a strict no-op on complete data", {
+  set.seed(102)
+  d <- sim_spmixqr(n = 60, G = 2, tau = 0.5, seed = 102)
+  f0 <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                variance = "none", control = spmixqr_control(nstart = 1L, seed = 4))
+  f1 <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                weights = rep(1, 60), variance = "none",
+                control = spmixqr_control(nstart = 1L, seed = 4))
+  expect_equal(f0$beta_const, f1$beta_const, tolerance = 1e-12)
+})
+
+test_that("frequency AIC/BIC/logLik use the effective sample size n_eff", {
+  set.seed(103)
+  d <- sim_spmixqr(n = 80, G = 2, tau = 0.5, seed = 103)
+  wt <- sample(1:4, 80, replace = TRUE)
+  ff <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                weights = wt, weights_type = "frequency", variance = "none",
+                control = spmixqr_control(nstart = 1L, seed = 6))
+  fp <- spmixqr(y ~ x, data = d$data, coords = d$coords, G = 2, tau = 0.5,
+                weights = wt, weights_type = "precision", variance = "none",
+                control = spmixqr_control(nstart = 1L, seed = 6))
+  n <- length(ff$y); ne <- ff$weights_sum
+  ## frequency loglik is the precision (mean-1) loglik scaled to n_eff
+  expect_equal(ff$loglik, fp$loglik * (ne / n), tolerance = 1e-8)
+  expect_equal(ff$bic, -2 * fp$loglik * (ne / n) + log(ne) * ff$edf, tolerance = 1e-6)
+  ## precision keeps n
+  expect_equal(fp$bic, -2 * fp$loglik + log(n) * fp$edf, tolerance = 1e-6)
+  expect_equal(as.numeric(attr(logLik(ff), "nobs")), ne)
+})

@@ -115,6 +115,36 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
     }
   }
 
+  ## ---- complete-case alignment (formula + gating + weights + coords) ----
+  ## Drop rows with NA in any model variable so y, X, the gating design, coords, and
+  ## weights all reference the same observations (mirrors lm's joint model frame).
+  ## Strict no-op when there are no NAs, so complete-data fits are unchanged.
+  if (is.data.frame(data)) {
+    n_full <- nrow(data)
+    keep <- rep(TRUE, n_full)
+    mvars <- intersect(unique(c(all.vars(formula), all.vars(gating))), names(data))
+    if (length(mvars)) keep <- keep & stats::complete.cases(data[, mvars, drop = FALSE])
+    wv <- if (inherits(weights, "formula")) all.vars(weights)
+          else if (is.character(weights) && length(weights) == 1L) weights else NULL
+    wv <- intersect(wv, names(data))
+    if (length(wv)) keep <- keep & stats::complete.cases(data[, wv, drop = FALSE])
+    if (is.numeric(weights) && length(weights) == n_full) keep <- keep & !is.na(weights)
+    cv <- if (is.character(coords)) intersect(coords, names(data)) else character(0)
+    if (length(cv)) keep <- keep & stats::complete.cases(data[, cv, drop = FALSE])
+    coord_mat <- (is.matrix(coords) || is.data.frame(coords)) && !is.null(coords) &&
+      nrow(as.matrix(coords)) == n_full
+    if (coord_mat) keep <- keep & stats::complete.cases(as.matrix(coords))
+    region_vec <- (is.factor(coords) || (is.atomic(coords) && !is.matrix(coords) &&
+      !is.character(coords) && length(coords) == n_full))
+    if (region_vec) keep <- keep & !is.na(coords)
+    if (any(!keep)) {
+      data <- data[keep, , drop = FALSE]
+      if (is.numeric(weights) && length(weights) == n_full) weights <- weights[keep]
+      if (coord_mat) coords <- coords[keep, , drop = FALSE]
+      if (region_vec) coords <- coords[keep]
+    }
+  }
+
   ## ---- response + component design ----
   mf <- stats::model.frame(formula, data)
   y <- stats::model.response(mf)
@@ -217,8 +247,13 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
   ## ---- effective df, AIC/BIC ----
   edf <- compute_edf(best, Xt, Z, Pen_beta, Pen_gamma, G, des, spatial_coef, w_obs = w_fit)
   ll <- best$loglik
-  aic <- if (is.finite(ll)) -2 * ll + 2 * edf$total else NA_real_
-  bic <- if (is.finite(ll)) -2 * ll + log(n) * edf$total else NA_real_
+  ## frequency weights: report loglik/AIC/BIC at the effective (replication) scale
+  ## n_eff = Σω_raw, consistent with the n_eff-rescaled SEs. Sampling/precision keep n.
+  freq_ic <- identical(weights_type, "frequency") && !is.null(wobj$raw)
+  ll_ic <- if (freq_ic) ll * (wobj$sum_raw / n) else ll
+  ic_nobs <- if (freq_ic) wobj$sum_raw else n
+  aic <- if (is.finite(ll_ic)) -2 * ll_ic + 2 * edf$total else NA_real_
+  bic <- if (is.finite(ll_ic)) -2 * ll_ic + log(ic_nobs) * edf$total else NA_real_
 
   ## ---- CAR spatial-error effects (recover phi on the L units, mean-zero) ----
   car_slot <- NULL
@@ -250,7 +285,7 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
     coefficients = best$beta, beta_const = beta_const, gamma = best$gamma,
     prior = best$prior, posterior = best$posterior, sigma = best$sigma,
     dens = best$dens, fitted_q = X_fitted(Xt, best$beta), residuals_m = best$dm,
-    loglik = ll, edf = edf$total, edf_detail = edf, aic = aic, bic = bic,
+    loglik = ll_ic, edf = edf$total, edf_detail = edf, aic = aic, bic = bic,
     lambda_gate = lam_g, lambda_coef = lam_b, lambda_error = lam_phi,
     basis = basis, design = des,
     control = control, gate_ridge = control$gate_ridge,
