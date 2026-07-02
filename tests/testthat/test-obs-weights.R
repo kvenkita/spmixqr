@@ -313,3 +313,20 @@ test_that("frequency AIC/BIC/logLik use the effective sample size n_eff", {
   expect_equal(fp$bic, -2 * fp$loglik + log(n) * fp$edf, tolerance = 1e-6)
   expect_equal(as.numeric(attr(logLik(ff), "nobs")), ne)
 })
+
+test_that("NA in a directly-supplied character region-label vector drops the row", {
+  set.seed(104)
+  L <- 12
+  W <- matrix(0, L, L); for (i in seq_len(L - 1)) { W[i, i + 1] <- W[i + 1, i] <- 1 }
+  spw <- spq_weights(W, type = "supplied", ids = as.character(seq_len(L)))
+  n <- 60
+  region <- as.character(sample(seq_len(L), n, replace = TRUE))
+  x <- rnorm(n); y <- 1 + 0.5 * x + rnorm(n)
+  d <- data.frame(y = y, x = x)
+  region[7] <- NA                                   # NA in the region-label vector
+  f <- spmixqr(y ~ x, data = d, coords = region, spatial_W = spw,
+               spatial_error = TRUE, spatial_gate = FALSE, spatial_coef = FALSE,
+               G = 1, tau = 0.5, variance = "none",
+               control = spmixqr_control(nstart = 1L))
+  expect_equal(length(f$y), 59L)
+})

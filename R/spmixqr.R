@@ -137,11 +137,15 @@ spmixqr <- function(formula, data, coords = NULL, areal = NULL, G = 2L, tau = 0.
     region_vec <- (is.factor(coords) || (is.atomic(coords) && !is.matrix(coords) &&
       !is.character(coords) && length(coords) == n_full))
     if (region_vec) keep <- keep & !is.na(coords)
+    char_region_vec <- is.character(coords) && !is.null(coords) &&
+      length(coords) == n_full && !all(coords %in% names(data))
+    if (char_region_vec) keep <- keep & !is.na(coords)
     if (any(!keep)) {
       data <- data[keep, , drop = FALSE]
       if (is.numeric(weights) && length(weights) == n_full) weights <- weights[keep]
       if (coord_mat) coords <- coords[keep, , drop = FALSE]
       if (region_vec) coords <- coords[keep]
+      if (char_region_vec) coords <- coords[keep]
     }
   }
 
